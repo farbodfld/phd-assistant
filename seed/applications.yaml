@@ -1,0 +1,58 @@
+# Formal applications, from the Find PHD status file (section 5), as of 2026-11-08.
+# `match` is a substring used to link the application to its tracker row by title.
+- university: University of Bath
+  project: Mathematics and AI for Hyperspectral Imaging (EPSRC-DTG, Renishaw)
+  supervisor: Prof Matthew Nunes, Dr Matthias Ehrhardt
+  submitted_on: 2026-08-27
+  reference: "Bath app 269687897"
+  outcome: rejected
+  notes: "Not shortlisted (Nunes, 13 Oct); formal rejection 3 Nov."
+  match: "Hyperspectral"
+- university: University of Southampton
+  project: Privacy and Security Risks in LLMs
+  supervisor: Dr Han Wu
+  submitted_on: 2026-08-25
+  reference: "38719819"
+  outcome: pending
+  notes: "Admissions confirmed CV and proposal received 4 Sep. Southampton funding caveat (UK/EU only)."
+  match: "Privacy and Security Risks"
+- university: University of Southampton
+  project: Creating Explainable AI for Health with Confidence
+  supervisor: Prof Gabriela Czanner
+  submitted_on: 2026-08-27
+  reference: "A3/7089/farbodfld/03"
+  outcome: pending
+  notes: "Listing deadline had passed when applied. Document upload status unconfirmed."
+  match: "Explainable AI for Health"
+- university: University of Southampton
+  project: Biometric recognition systems with AI
+  supervisor: Dr Sasan Mahmoodi
+  submitted_on: 2026-08-28
+  reference: "A3/7089/farbodfld/04"
+  outcome: pending
+  notes: "Mahmoodi (1 Sep): university funding only for British/European students. Listing removed by 8 Nov."
+  match: "Biometric"
+- university: University of Cambridge
+  project: "Discovery of rational therapeutic biomarkers in breast cancer by systems pathology and deep learning (CRUK CI, SW50984) + Gates Cambridge"
+  supervisor: Dr Hamid Raza Ali
+  submitted_on: 2026-10-13
+  reference: null
+  outcome: pending
+  notes: "All references in (Gholami 15 Oct). Awaiting outcome."
+  match: "breast cancer"
+- university: University of Exeter
+  project: Simulating Person-specific Cognitive Processes from Expressive Behaviours for Mental Health Assessment (ref 5895)
+  supervisor: Dr Siyang Song, Prof Andrew Howes
+  submitted_on: 2026-10-19
+  reference: "770010570"
+  outcome: rejected
+  notes: "Rejected 4 Nov, not progressed to next stage, no feedback."
+  match: "Person-specific Cognitive"
+- university: University of Oxford
+  project: "DPhil Clinical Epidemiology and Medical Statistics (RD_NNRA1), Botnar-2026-05: Fidelity of real-world data transformation into Common Data Models (OMOP)"
+  supervisor: Assoc Prof Antonella Delmestri, Assoc Prof Sandra Kiefer, Dr Marta Pineda
+  submitted_on: 2026-10-21
+  reference: "Oxford applicant 1995250"
+  outcome: pending
+  notes: "All 3 references in; ready for assessment 3 Nov. Interviews 13 to 14 Jan 2027. Counts toward Oxford's 3-courses-per-cycle limit."
+  match: "Common Data Model"

@@ -1,0 +1,21 @@
+# Insights learned from supervisor replies (Find PHD status file, section 7).
+- {scope_type: university, scope_value: Southampton, source: email, learned_on: 2026-09-01, source_ref: Dr Sasan Mahmoodi,
+   text: "University funding is only for British/European students; international applicants need proof of own funding."}
+- {scope_type: university, scope_value: Birmingham, source: email, learned_on: 2026-09-29, source_ref: Dr Junqi Tang,
+   text: "Almost no scholarships for international students; an MSc Merit is not competitive. Low likelihood."}
+- {scope_type: position, scope_value: "Investigating the fidelity of real-world data", source: email, learned_on: 2026-10-13, source_ref: Assoc Prof Antonella Delmestri,
+   text: "Positive: background could fit. Projects are not funded directly; best post-interview applicants go to the central funding competition."}
+- {scope_type: position, scope_value: "Verified and reproducible execution of AI models", source: email, learned_on: 2026-10-13, source_ref: Dr Edoardo Manino,
+   text: "Read the cited papers and try the ESBMC examples before applying."}
+- {scope_type: position, scope_value: "Filling the Gaps in AI Software Assurance", source: email, learned_on: 2026-10-14, source_ref: Dr Suzanne Embury,
+   text: "No individual discussions; only specific questions by email. Funding competitive at School level. Apply via portal, then notify."}
+- {scope_type: position, scope_value: "AI-driven Hardware-Software Co-optimisation", source: email, learned_on: 2026-10-14, source_ref: Dr Pavlos Petoumenos,
+   text: "Project is micro-architecture and compiler optimisation more than ML; show evidence of interest in these areas. Farbod wants to apply later."}
+- {scope_type: position, scope_value: "Physics-Informed Machine Learning for Image-Based", source: email, learned_on: 2026-10-16, source_ref: Dr Vasheghani Farahani,
+   text: "Wants a proven research record in porous media or aerogels. Closed."}
+- {scope_type: position, scope_value: "Super-Resolution of 4D Flow MRI", source: email, learned_on: 2026-10-22, source_ref: Dr Emily Manchester,
+   text: "Not taking the enquiry forward; asked not to apply. Closed."}
+- {scope_type: position, scope_value: "Securing the human-AI decision boundary", source: email, learned_on: 2026-10-22, source_ref: Prof Vasilis Katos,
+   text: "No individual discussions; only submitted applications are assessed. Apply via the Bournemouth portal."}
+- {scope_type: position, scope_value: "Mathematics and Artificial Intelligence for Hyperspectral", source: email, learned_on: 2026-10-13, source_ref: Prof Matthew Nunes,
+   text: "Not shortlisted; advised using FindAPhD and applying to departments centrally."}

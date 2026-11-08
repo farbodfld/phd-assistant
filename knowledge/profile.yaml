@@ -1,0 +1,129 @@
+# Farbod's verified profile. The ONLY source of facts the agent may state about him.
+# Anything not here must not be claimed in emails, statements or proposals.
+# Personal identifiers (address, phone, DOB, visa) live in knowledge/private.yaml (not in git).
+
+name: Farbod Fooladi
+title: Mr
+email: farbodfooladi@gmail.com
+nationality: Iranian
+fee_status: international        # always needs international fees covered
+
+education:
+  - degree: MSc Data Science
+    institution: University of Essex
+    department: School of Mathematics, Statistics and Actuarial Science
+    country: UK
+    start: 2024-10-03
+    end: 2025-10-01
+    awarded: 2025-11-24
+    classification: Merit
+    overall_mark: 66        # out of 100
+    modules:
+      Information Retrieval: 77
+      Machine Learning: 59
+      Neural Networks and Deep Learning: 56
+      Data Visualisation: 70
+      Applied Statistics: 52
+      Databases and data processing with SQL: 69
+      Dynamic Programming and Reinforcement Learning: 63
+      Applied Regression and Experimental Data Analysis: 50
+      Research Skills: Distinction
+    dissertation:
+      title: Developing a Machine Learning-Based Movie Recommendation System
+      mark: 75
+      supervisor: Andrew Harrison
+      summary: >-
+        Hybrid recommender combining content-based and collaborative filtering,
+        optimising the weighting between the two components, evaluated with
+        Precision@K, Recall@K and NDCG@K.
+
+  - degree: BSc Computer Engineering        # NOT "Computer Science"
+    institution: Shahid Beheshti University, Tehran
+    department: Faculty of Computer Science and Engineering
+    country: Iran
+    start: 2019-09
+    end: 2024-02-19
+    gpa: "15.25/20"
+    thesis:
+      title: Semi-supervised anomaly detection in system logs
+      mark: "19/20"
+      supervisor: Alireza Shameli-Sendi
+      published: false          # never claim a paper from it
+    courses_to_cite:            # verified, safe to mention
+      Principles of Algorithms: 17.17
+      Databases: 16.02
+      Database Lab: 18.5
+      Engineering Probability and Statistics: 16
+      Engineering Mathematics: 18.3
+      Signals and Systems: 19.23
+      Theory of Machines and Languages: 15.89
+      Intro to Machine Learning: 14.6
+      AI and Expert Systems: 13.91
+      Software Engineering: 16
+      Software Engineering Lab: 19.71
+    courses_to_avoid: [Discrete Mathematics, Data Structures]
+
+experience:
+  - role: Software Engineer
+    employer: Namaad Iran Co.
+    location: Tehran, Iran
+    start: 2023-03
+    end: 2024-09
+    points:
+      - Built and maintained production applications used by 500+ users
+      - MySQL, data pipelines, documenting APIs and workflows
+      - Trained interns each year
+  - role: Voluntary teaching assistant (unpaid)
+    employer: Shahid Beheshti University
+    points:
+      - Software Engineering, Software Testing, Advanced Programming
+      - Free tutoring sessions for classmates
+
+never_mention_in_academic_applications:
+  - Slim Chickens part-time job
+
+projects:
+  - AI security camera system (OpenCV, YOLOv8, FastAPI, Next.js, Telegram bot), deployed
+  - LLM recruiting agent (LangGraph, OpenAI API), in progress
+  - CNN quadcopter detection (TensorFlow/Keras)
+  - Customer churn prediction
+  - Hive game AI
+  - TCP/UDP networking project
+  - Course selection web system
+  - End-to-end website with an AI agent for a friend's chocolate business
+
+languages_programming: [Python, C, C++, C#, Go, Java, SQL, JavaScript, TypeScript]
+languages_spoken: {Persian: native, English: fluent}
+english_test: none            # no IELTS on record; waiver usually requested via UK MSc
+
+publications: []              # none; never claim any
+
+referees:
+  - name: Danial Mohammadinia
+    title: Mr
+    position: PhD Researcher
+    institution: Imperial College London
+    email: D.mohammadinia26@imperial.ac.uk
+    type: academic
+  - name: Behnam Gholami
+    title: Mr
+    position: Researcher
+    institution: University of Essex
+    email: bg24306@essex.ac.uk
+    type: academic
+  - name: Mohammadamin Jarrahi
+    title: Mr
+    position: Researcher
+    institution: Queen Mary University of London
+    email: M.jarrahi@qmul.ac.uk
+    type: academic
+
+documents:
+  master_cv: Farbod_Fooladi_CV.pdf          # one CV for every application
+  msc_transcript: MSc_HEAR_Transcript_under2MB.pdf
+  msc_certificate: Fooladi Farbod Award Certificate - Award Certificate-FOOLA91009-12776-en.pdf
+  bsc_transcript: BSc Transcript.pdf
+  bsc_certificate: BSc Award Certificate.pdf
+
+known_cv_issues:
+  - CV says BSc ended Jan 2024; transcript says graduated 19 Feb 2024 (not yet fixed)

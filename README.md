@@ -32,6 +32,25 @@ proposal, risk check, portal step and chat. Change a task's tier there only.
 Stable context is cached; every call's tokens and cost are logged in
 `llm_calls`, and calls stop once `DAILY_BUDGET_USD` is reached.
 
+## Phase 2 (done): knowledge and rules
+
+| Part | Where |
+|---|---|
+| Verified profile (only facts the agent may state) | `knowledge/profile.yaml` |
+| Personal identifiers for portals (local only, gitignored) | `knowledge/private.yaml` (template: `private.example.yaml`) |
+| Standing rules as SOPs | `sops/*.md` |
+| Per-university rules (limits, AI policy, English, portal traps) | `knowledge/institutions.yaml` |
+| Insights from supervisor replies | `seed/insights.yaml` |
+| Context builder for LLM tasks | `app/knowledge/loader.py` |
+| Text checks (dash connectors, fabrication, tone) | `app/rules/text_checks.py` |
+| Funding classifier | `app/rules/funding.py` |
+| Rules engine: flags with inform / followup / decide / block | `app/rules/engine.py` |
+
+```bash
+phd seed-knowledge     # load insights
+phd check              # refresh flags; prints decisions that need Farbod
+```
+
 ### Export notes
 
 The export follows the tracker rules: sorted by score with Rank renumbered,

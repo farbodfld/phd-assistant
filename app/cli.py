@@ -17,6 +17,9 @@ def main(argv=None):
     imp.add_argument("--applications", type=Path, default=ROOT / "seed" / "applications.yaml")
     exp = sub.add_parser("export", help="write the Excel tracker")
     exp.add_argument("out", type=Path, nargs="?", default=ROOT / "exports" / "Farbod_PhD_Position_Matches.xlsx")
+    sub.add_parser("seed-knowledge", help="load supervisor-reply insights from seed/insights.yaml")
+    chk = sub.add_parser("check", help="run rules and refresh flags")
+    chk.add_argument("--today", type=date.fromisoformat, default=None)
     sub.add_parser("serve", help="run the assistant (phase 6)")
     args = ap.parse_args(argv)
 
@@ -32,6 +35,17 @@ def main(argv=None):
         from app.tracker.exporter import export_workbook
         with session_scope() as s:
             print(export_workbook(s, args.out, date.today()))
+    elif args.cmd == "seed-knowledge":
+        from app.rules.engine import seed_insights
+        with session_scope() as s:
+            print(f"{seed_insights(s)} new insights")
+    elif args.cmd == "check":
+        from app.rules.engine import run_checks
+        with session_scope() as s:
+            r = run_checks(s, args.today)
+        print("open flags by action:", r.flags_by_action)
+        for d in r.decisions:
+            print("DECIDE:", d)
     elif args.cmd == "serve":
         raise SystemExit("serve is built in phase 6")
 

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (Application, Contact, Document, ExcludedPosition,
                            Meta, Position)
+from app.rules.funding import classify_funding
 from app.tracker.layout import (COLS_BY_SOURCE, EXCLUDED_HEADER, GREY,
                                 SHEET_ABOUT, SHEET_BY_SOURCE, TICK)
 from app.tracker.parsing import (cell_text, classify_document,
@@ -20,19 +21,6 @@ from app.tracker.parsing import (cell_text, classify_document,
 def _is_grey(cell) -> bool:
     rgb = cell.fill.fgColor.rgb if cell.fill and cell.fill.fgColor else None
     return isinstance(rgb, str) and rgb.upper().endswith(GREY)
-
-
-def _guess_funding(*texts: str | None) -> str:
-    t = " ".join(x for x in texts if x).lower()
-    if "home fee" in t or "home rate" in t or "uk only" in t or "british/european" in t:
-        return "home_only"
-    if "competition funded" in t:
-        return "competition"
-    if "confirm international fee" in t or "confirm full international" in t or "funding not specified" in t:
-        return "unclear"
-    if "students worldwide" in t or "international" in t:
-        return "full_international"
-    return "unknown"
 
 
 def import_tracker(s: Session, xlsx_path: Path) -> dict:
@@ -68,7 +56,7 @@ def import_tracker(s: Session, xlsx_path: Path) -> dict:
                 else:
                     setattr(p, col.field, cell_text(cell.value))
             p.deadline_date = parse_deadline(p.deadline_text)
-            p.funding = _guess_funding(p.fit_note, p.status)
+            p.funding, _ = classify_funding(p.fit_note, p.status, p.application_route)
             for name, email in parse_contacts(p.supervisor_contact):
                 p.contacts.append(Contact(name=name, email=email))
             s.add(p)

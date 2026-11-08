@@ -1,0 +1,9 @@
+# Copy to knowledge/private.yaml (gitignored) and fill in. Used only for portal forms.
+# Passport and other government ID numbers are NEVER stored: Farbod types them himself.
+date_of_birth: YYYY-MM-DD
+address: ""
+phone: ""
+uk_visa: ""            # e.g. Graduate visa valid until ...
+in_uk_since: YYYY-MM-DD
+disability: "No"
+equality_questions: Prefer not to say

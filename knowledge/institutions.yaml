@@ -1,0 +1,70 @@
+# Per-institution rules the agent must respect. `match` is checked against the
+# position's University field (case-insensitive substring).
+# Each rule becomes a flag with an action: inform | followup | decide | block.
+
+- name: University of Oxford
+  match: [oxford]
+  application_limit:
+    max: 3
+    per: admissions cycle
+    note: Each applicant may apply to at most 3 Oxford graduate courses per cycle.
+  ai_writing: banned          # statements and proposals must be Farbod's own words
+  portal_notes:
+    - The References tab sends reference requests the moment you leave it with "ready" ticked.
+    - "SITS buttons: submitbutton1 = Save and Proceed, prevbutton1 = Previous."
+    - Existing applications open from the course Apply link, not the general eVision portal.
+  english: waiver requested via UK MSc
+
+- name: GW4 BioMed
+  match: [gw4]
+  ai_writing: banned
+  application_limit: {max: 2, per: round, title_match: [], note: At most two GW4 projects per candidate.}
+
+- name: University of Bath
+  match: [bath]
+  application_limit: {max: 2, per: round, title_match: [engineering & design], note: Bath Engineering & Design studentships allow at most 2 projects.}
+
+- name: University of Southampton
+  match: [southampton]
+  funding_note: University-funded studentships are for British/European students (see insights);
+    only externally sponsored projects that cover international fees are worth applying to.
+
+- name: Bournemouth University
+  match: [bournemouth]
+  english: {test: IELTS, overall: 6.5, each: 6.0, note: Check whether the UK MSc waives it.}
+  entry_requirement: Normally First class or Master's Distinction; Farbod has Merit.
+  process_note: Supervisors (Katos) do not hold individual discussions; only submitted applications are assessed.
+
+- name: University of Exeter
+  match: [exeter]
+  funding_ambiguity: >-
+    Adverts say "funding of fees" without stating international fees. Ask, in the outreach
+    email or to the admissions contact, whether the full international fee is covered.
+  portal_notes:
+    - "chosen.js selects: set select.value then trigger change and chosen:updated."
+    - "SITS button2id = Save and continue."
+    - Referees email references to PGRApplicants@exeter.ac.uk quoting the reference number.
+
+- name: University of Surrey
+  match: [surrey]
+  funding_ambiguity: Adverts mention an "international (waiver)"; confirm it covers the full international fee.
+
+- name: University of Manchester
+  match: [manchester]
+  funding_note: School scholarships cover fees + UKRI stipend but are competitive at School level.
+
+- name: University of Cambridge
+  match: [cambridge]
+  portal_notes:
+    - "PrimeFaces widgets: PrimeFaces.widgets[key].selectValue(val)."
+    - Referees are contacted automatically by the portal.
+  funding_note: Gates Cambridge has its own deadlines and essays.
+
+- name: University College London
+  match: [university college london, ucl]
+  funding_note: Check each studentship; some UCL schemes make international students pay the fee difference.
+
+# Location rule applied to all institutions
+- name: Outside England
+  match: [edinburgh, glasgow, strathclyde, st andrews, aberdeen, dundee, heriot, stirling, cardiff, swansea, bangor, aberystwyth, queen's university belfast, ulster]
+  exclude_reason: Outside England (Scotland, Wales or Northern Ireland)

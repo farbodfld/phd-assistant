@@ -51,6 +51,28 @@ phd seed-knowledge     # load insights
 phd check              # refresh flags; prints decisions that need Farbod
 ```
 
+## Phase 3 (done): Gmail, replies and insights
+
+| Part | Where |
+|---|---|
+| Gmail OAuth and API wrapper | `app/gmail/client.py` (client JSON and token in `secrets/`, gitignored) |
+| Message parsing, quoted-text stripping | `app/gmail/parse.py` |
+| Relevance filter and position matching | `app/mail/matching.py` |
+| History backfill and inbox processing | `app/mail/inbox.py` |
+| Structured analysis (category, insights, closures, tasks, reply) | `app/mail/analysis.py` |
+| Due reminders (14 days, max two) | `app/mail/reminders.py` |
+| Fixed-time scheduler (09:00, 14:00, 17:00, 20:00 London) | `app/scheduler.py` |
+
+```bash
+phd gmail-auth                 # once, opens the browser
+phd backfill --since 2026-07-01
+phd inbox-check
+phd reminders-due
+```
+
+Every reply draft and notification is stored (`drafts`, `notifications`) for the
+Telegram bot in phase 6. Nothing is sent from this phase.
+
 ### Export notes
 
 The export follows the tracker rules: sorted by score with Rank renumbered,

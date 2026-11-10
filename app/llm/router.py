@@ -17,15 +17,17 @@ class Route:
 
 ROUTES: dict[str, Route] = {
     # cheap: classification, extraction, scoring, summaries
-    "classify_email": Route("cheap", 400),
-    "screen_listing": Route("cheap", 400),        # first-pass funding / topic filter
+    "classify_email": Route("cheap", 600),
+    "email_relevance": Route("cheap", 500),        # is an unknown academic email about Farbod's PhD search?
+    "screen_listing": Route("cheap", 600),        # first-pass funding / topic filter
     "score_position": Route("cheap", 600),
     "extract_requirements": Route("cheap", 800),
     "daily_report": Route("cheap", 1200),
     "chat_simple": Route("cheap", 800),           # "what are this week's deadlines?"
 
     # strong: anything sent to a person, and judgement calls
-    "reply_to_supervisor": Route("strong", 1500),  # professors' and admissions emails always go here
+    "reply_to_supervisor": Route("strong", 1500),
+    "analyse_email": Route("strong", 3000),        # every supervisor/admissions email: category, insights, actions, reply
     "extract_insights": Route("strong", 1200),
     "initial_email": Route("strong", 1200),
     "reminder_email": Route("strong", 500),

@@ -24,6 +24,10 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
+class LLMOutputError(RuntimeError):
+    """The model did not return a valid structured answer, even after a retry."""
+
+
 def spent_today() -> float:
     start = datetime.combine(date.today(), time.min)
     with session_scope() as s:
@@ -72,9 +76,22 @@ class LLMClient:
         kwargs = dict(model=model, max_tokens=max_tokens, messages=messages,
                       system=self._system(list(context), instructions))
         if output is not None:
-            resp = self._sdk.messages.parse(output_format=output, **kwargs)
-            self._record(task, model, resp.usage)
-            return resp.parsed_output
+            from pydantic import ValidationError
+            problem = "?"
+            for attempt in range(3):
+                try:
+                    resp = self._sdk.messages.parse(output_format=output, **kwargs)
+                except ValidationError as err:
+                    # the SDK validates the JSON itself: a cut-off or malformed answer lands here
+                    problem = f"invalid JSON ({err.errors()[0].get('type', '?')})"
+                else:
+                    self._record(task, model, resp.usage)
+                    if resp.parsed_output is not None:
+                        return resp.parsed_output
+                    problem = f"stop_reason={getattr(resp, 'stop_reason', '?')}"
+                # try again with more room to finish
+                kwargs["max_tokens"] = kwargs["max_tokens"] * 2
+            raise LLMOutputError(f"{task}: no valid {output.__name__} after 3 attempts ({problem})")
         resp = self._sdk.messages.create(**kwargs)
         self._record(task, model, resp.usage)
         return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")

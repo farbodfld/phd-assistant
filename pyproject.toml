@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "phd-assistant"
 version = "0.1.0"
@@ -11,6 +15,9 @@ dependencies = [
     "openpyxl>=3.1",
     "anthropic>=0.40",
     "pyyaml>=6.0",
+    "google-api-python-client>=2.100",
+    "google-auth>=2.23",
+    "google-auth-oauthlib>=1.1",
 ]
 
 [project.optional-dependencies]
@@ -21,3 +28,6 @@ phd = "app.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]

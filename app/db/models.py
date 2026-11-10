@@ -146,6 +146,41 @@ class EmailMessage(Base):
     category: Mapped[str | None] = mapped_column(String(24))   # positive | rejection | question | request_docs | admin | other
     summary: Mapped[str | None] = mapped_column(Text)
     body: Mapped[str | None] = mapped_column(Text)
+    message_id_header: Mapped[str | None] = mapped_column(Text)   # for In-Reply-To when replying
+    processed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Draft(Base):
+    """An email waiting for Farbod's decision in Telegram (Approve / Deny / Edit)."""
+    __tablename__ = "drafts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    position_id: Mapped[int | None] = mapped_column(ForeignKey("positions.id"))
+    reply_to_email_id: Mapped[int | None] = mapped_column(ForeignKey("emails.id"))
+    kind: Mapped[str] = mapped_column(String(16))          # reply | initial | reminder
+    to: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    thread_id: Mapped[str | None] = mapped_column(String(64))
+    in_reply_to: Mapped[str | None] = mapped_column(Text)
+    attachments: Mapped[list | None] = mapped_column(JSON)  # file paths
+    notes: Mapped[list | None] = mapped_column(JSON)        # what Farbod should know (e.g. funding question added)
+    issues: Mapped[list | None] = mapped_column(JSON)       # text-check findings left after auto-fix
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | approved | denied | sent | superseded
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    sent_gmail_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Notification(Base):
+    """Outbox for Telegram (phase 6). Written by every workflow, sent by the bot."""
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(24))      # email | decision | task | report | error
+    text: Mapped[str] = mapped_column(Text)            # Persian, for Farbod
+    ref_type: Mapped[str | None] = mapped_column(String(24))
+    ref_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class Insight(Base):

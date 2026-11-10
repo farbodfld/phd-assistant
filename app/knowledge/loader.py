@@ -16,6 +16,8 @@ TASK_SOPS: dict[str, list[str]] = {
     "reply_to_supervisor": ["25_replies", "10_outreach_emails"],
     "extract_insights": ["25_replies", "40_funding_and_eligibility"],
     "classify_email": ["25_replies"],
+    "email_relevance": [],
+    "analyse_email": ["25_replies", "10_outreach_emails", "40_funding_and_eligibility"],
     "personal_statement": ["30_documents"],
     "research_proposal": ["30_documents"],
     "screen_listing": ["40_funding_and_eligibility"],
@@ -26,7 +28,7 @@ TASK_SOPS: dict[str, list[str]] = {
     "chat": ["70_approvals_and_notifications", "60_tracker"],
     "chat_simple": ["60_tracker"],
 }
-NEEDS_PROFILE = {"initial_email", "reminder_email", "reply_to_supervisor", "personal_statement",
+NEEDS_PROFILE = {"analyse_email", "initial_email", "reminder_email", "reply_to_supervisor", "personal_statement",
                  "research_proposal", "score_position", "portal_step", "chat"}
 
 

@@ -2,6 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +31,8 @@ class Settings(BaseSettings):
     timezone: str = "Europe/London"
     inbox_check_times: list[str] = ["09:00", "14:00", "17:00", "20:00"]
     daily_run_time: str = "09:00"           # site sweep, outreach and reminder drafts, report
+    findaphd_archive_dir: Path = ROOT / "data" / "findaphd"
+    findaphd_page_wait_seconds: PositiveInt = 40
 
     # Telegram (phase 6)
     telegram_bot_token: str = ""

@@ -9,7 +9,7 @@ from app.config import ROOT
 KNOWLEDGE = ROOT / "knowledge"
 SOPS = ROOT / "sops"
 
-# Which SOPs each LLM task needs (00 hard rules are always included).
+# Which SOPs each LLM task needs.
 TASK_SOPS: dict[str, list[str]] = {
     "initial_email": ["10_outreach_emails", "40_funding_and_eligibility"],
     "reminder_email": ["20_reminders"],
@@ -61,9 +61,20 @@ def institutions_for(university: str | None) -> list[dict]:
 def build_context(task: str) -> list[str]:
     """Stable context blocks for a task, in a fixed order so prompt caching hits."""
     sops = load_sops()
-    names = ["00_mission_and_hard_rules"] + TASK_SOPS.get(task, [])
+    names = TASK_SOPS.get(task, [])
+    if task != "score_position":
+        names = ["00_mission_and_hard_rules"] + names
     blocks = [f"## SOP {n}\n\n{sops[n]}" for n in names if n in sops]
-    if task in NEEDS_PROFILE:
+    if task == "score_position":
+        profile = load_profile()
+        facts = {key: profile.get(key) for key in ("fee_status", "nationality", "projects", "languages_programming")}
+        facts["degrees"] = [e["degree"] for e in profile.get("education", [])]
+        facts["thesis_topics"] = [e[key]["title"] for e in profile.get("education", [])
+                                 for key in ("thesis", "dissertation") if e.get(key, {}).get("title")]
+        facts["experience"] = [e["role"] for e in profile.get("experience", [])]
+        blocks.append("Use only these verified facts for fit and eligibility:\n"
+                      + yaml.safe_dump(facts, allow_unicode=True, sort_keys=False))
+    elif task in NEEDS_PROFILE:
         profile_text = (KNOWLEDGE / "profile.yaml").read_text(encoding="utf-8")
         blocks.append("## Farbod's verified profile (the only facts you may state)\n\n" + profile_text)
     return blocks

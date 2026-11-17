@@ -24,3 +24,11 @@ def test_classification_context_has_no_profile():
 def test_institution_match():
     assert institutions_for("University of Oxford (Botnar Research Centre)")[0]["application_limit"]["max"] == 3
     assert institutions_for("Nowhere University") == []
+
+
+def test_scoring_context_limits_profile_fields():
+    ctx = "\n".join(build_context("score_position"))
+    profile = load_profile()
+    assert profile["education"][0]["degree"] in ctx and "50_scoring" in ctx
+    assert profile["email"] not in ctx and profile["name"] not in ctx
+    assert "referees:" not in ctx and "supervisor:" not in ctx

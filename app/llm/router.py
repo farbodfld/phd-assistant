@@ -20,7 +20,7 @@ ROUTES: dict[str, Route] = {
     "classify_email": Route("cheap", 600),
     "email_relevance": Route("cheap", 500),        # is an unknown academic email about Farbod's PhD search?
     "screen_listing": Route("cheap", 600),        # first-pass funding / topic filter
-    "score_position": Route("cheap", 600),
+    "score_position": Route("cheap", 1500),
     "extract_requirements": Route("cheap", 800),
     "daily_report": Route("cheap", 1200),
     "chat_simple": Route("cheap", 800),           # "what are this week's deadlines?"

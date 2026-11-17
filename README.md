@@ -79,3 +79,69 @@ The export follows the tracker rules: sorted by score with Rank renumbered,
 score colours on Rank and Score, Apply Method colours, closed rows greyed from
 column C, links in the Link column, the "Checked and excluded" block, and the
 Summary counts and next deadlines recomputed from the data.
+
+## Phase 4: scheduled position discovery
+
+On the Lightsail host, configure the server's `.env` with the model key and
+PostgreSQL credentials. Run `docker compose build app`, then check that the
+host can read both a real listing and a project before relying on daily coverage:
+
+```sh
+docker compose run --rm --no-deps app phd probe-findaphd
+docker compose up -d
+docker compose logs app
+```
+
+`phd serve` schedules jobs.ac.uk followed by FindAPhD at `DAILY_RUN_TIME`
+(default 09:00 in `Europe/London`). Each source has a separate run report
+and same-day restart marker. A failure in one leaves the other scheduled.
+Run either source manually with `phd discover --source jobsac` or
+`phd discover --source findaphd`. FindAPhD saves validated
+HTML on the server's `findaphd` volume, reuses details for seven days, and
+records project IDs, suitable positions and run reports in the database.
+The worker launches the same Patchright and headed Chrome combination as the
+original scraper. Docker supplies a virtual display (Xvfb) and the server keeps
+its own browser profile on the archive volume. The default image uses Google
+Chrome on x86-64 and Debian Chromium on ARM. The scheduled worker waits up to
+40 seconds for real listing or advert markup on each navigation, including an
+automatic reload after a challenge. On a Windows laptop, install Chrome and
+the project's Python dependencies before running `phd probe-findaphd`.
+The existing `phd discover` command still runs jobs.ac.uk.
+
+An unresolved challenge, denied request or unrecognised results page produces an
+incomplete report. Existing tracker rows stay active. The next scheduled run
+tries again. Persistent challenges require a machine-access route from
+FindAPhD for full coverage from the server. The probe uses no database or model
+and exits with a non-zero status on failure.
+
+### If FindAPhD asks for a human on Lightsail
+
+To review the actual server browser, run the following on Lightsail outside an
+active sweep. It opens a temporary VNC session for the probe, shares the
+worker's profile, and prompts for a temporary VNC password. The published port
+is bound to the server's loopback interface. The container exits when the
+probe finishes. To run the sweep in that same session, replace the final
+`phd probe-findaphd` with `phd discover --source findaphd` and have the
+database service running.
+
+```sh
+docker compose run --rm --no-deps -p 127.0.0.1:5901:5901 \
+  -e FINDAPHD_PAGE_WAIT_SECONDS=180 app sh -ec '
+    x11vnc -storepasswd /tmp/findaphd-vnc.pass
+    x11vnc -display "$DISPLAY" -rfbport 5901 -rfbauth /tmp/findaphd-vnc.pass -bg -forever -o /tmp/findaphd-vnc.log
+    exec phd probe-findaphd'
+```
+
+Before starting the probe, open an SSH tunnel from your computer using your
+usual Lightsail SSH login (replace `USER@HOST` with that login):
+
+```sh
+ssh -N -L 5901:127.0.0.1:5901 USER@HOST
+```
+
+Connect a VNC viewer to local TCP port 5901, enter the temporary password, and
+complete the check if the site offers one. The probe proceeds as soon as the
+content appears. The server reuses the profile in future runs; the site
+controls the validity of the session. If the site consistently requires
+human input, ask FindAPhD for an approved automated feed or access for the
+server IP. Keep port 5901 closed in the Lightsail firewall.

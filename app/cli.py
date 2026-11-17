@@ -35,8 +35,26 @@ def main(argv=None):
     rd.add_argument("--today", type=date.fromisoformat, default=None)
     an = sub.add_parser("analyse", help="dry run: Opus analyses the last N stored incoming emails, nothing is changed")
     an.add_argument("--last", type=int, default=1)
-    sub.add_parser("serve", help="run the assistant (phase 6)")
+    dv = sub.add_parser("discover", help="find new positions and update the tracker")
+    dv.add_argument("--source", choices=["jobsac", "findaphd"], default="jobsac")
+    dv.add_argument("--max-pages", type=int, help="optional limit for a partial run (default: all pages)")
+    dv.add_argument("--today", type=date.fromisoformat, default=None)
+    sub.add_parser("probe-sites", help="check that jobs.ac.uk can be read from here; saves samples")
+    sub.add_parser("probe-findaphd", help="test live access to a FindAPhD list and advert from this host")
+    sub.add_parser("serve", help="run daily discovery on jobs.ac.uk and FindAPhD")
     args = ap.parse_args(argv)
+
+    if args.cmd == "probe-findaphd":
+        from app.discovery.findaphd_browser import FindAPhDBrowser
+        from app.discovery.findaphd import FetchFailed, probe
+        fetcher = FindAPhDBrowser()
+        try:
+            print("FindAPhD listing and detail accessible:", probe(fetcher))
+        except (FetchFailed, ValueError) as exc:
+            raise SystemExit(f"FindAPhD access probe failed: {exc}") from None
+        finally:
+            fetcher.close()
+        return
 
     from app.db.base import init_db, session_scope
     init_db()
@@ -111,8 +129,24 @@ def main(argv=None):
                 print("position:", p.title if p else None)
                 print(a.model_dump_json(indent=2))
             s.rollback()
+    elif args.cmd == "discover":
+        if args.max_pages is not None and args.max_pages < 1:
+            ap.error("--max-pages must be positive")
+        from app.discovery.worker import discover
+        report = discover(args.today, args.max_pages, source=args.source)
+        if report is None:
+            raise SystemExit("Discovery is already running")
+        print(report.summary())
+        if report.errors:
+            raise SystemExit(1)
+    elif args.cmd == "probe-sites":
+        from app.discovery.probe import probe
+        out = ROOT / "data" / "samples"
+        probe(out)
+        print(f"samples saved in {out}")
     elif args.cmd == "serve":
-        raise SystemExit("serve is built in phase 6")
+        from app.discovery.worker import serve
+        serve()
 
 
 if __name__ == "__main__":

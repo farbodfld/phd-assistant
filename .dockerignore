@@ -1,0 +1,13 @@
+**
+!pyproject.toml
+!app/
+!app/**/
+!app/**/*.py
+!seed/
+!seed/*.yaml
+!seed/folder_inventory.json
+!sops/
+!sops/*.md
+!knowledge/
+!knowledge/profile.yaml
+!knowledge/institutions.yaml

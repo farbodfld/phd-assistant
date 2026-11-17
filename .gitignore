@@ -7,3 +7,4 @@ exports/
 knowledge/private.yaml
 secrets/
 .venv/
+*.egg-info/

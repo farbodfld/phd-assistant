@@ -1,2 +1,0 @@
-[console_scripts]
-phd = app.cli:main

@@ -6,9 +6,10 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.models import ExcludedPosition, Meta, Notification, Position
 from app.discovery.jobsac import Advert, job_code, parse_advert, parse_list
-from app.discovery.screen import SCREEN_INSTRUCTIONS, Screen, advert_prompt
+from app.discovery.screen import SCREEN_INSTRUCTIONS, Screen, advert_prompt, decide
 from app.discovery.sources import JOBSAC
 from app.knowledge.loader import build_context, institutions_for
 from app.rules.text_checks import fix_dash_connectors
@@ -156,7 +157,10 @@ def run_jobsac(s: Session, fetcher, llm, today: date | None = None, max_pages: i
             continue
         a = parse_advert(page.html, l.url)
         if not a.title or not a.description:
-            rep.errors.append(f"{l.code}: missing advert title or description")
+            failed = get_settings().failed_pages_dir
+            failed.mkdir(parents=True, exist_ok=True)
+            (failed / f"jobsac_{l.code}.html").write_text(page.html, encoding="utf-8")
+            rep.errors.append(f"{l.code}: unrecognised advert layout (saved for inspection)")
             continue
         outside = next((i for i in institutions_for(a.employer + " " + a.location) if i.get("exclude_reason")), None)
         if outside:
@@ -171,11 +175,11 @@ def run_jobsac(s: Session, fetcher, llm, today: date | None = None, max_pages: i
         except Exception as e:             # one bad advert must not stop the run
             rep.errors.append(f"{l.code}: screening failed ({type(e).__name__})")
             continue
-        if not v.topic_relevant:
+        verdict, reason = decide(v, a.funding_for, a.funding_amount, a.description)
+        if verdict == "off_topic":
             _remember(meta, l.code, "off-topic", a.title, today)
             rep.off_topic += 1
-        elif not v.england or v.funding in ("home_only", "partial", "self_funded"):
-            reason = v.exclude_reason or ("Outside England" if not v.england else v.funding_note)
+        elif verdict == "exclude":
             _exclude(s, a, fix_dash_connectors(reason))
             _remember(meta, l.code, f"excluded: {reason}", a.title, today)
             rep.excluded.append(a.title)
@@ -204,6 +208,7 @@ def report_fa(r: DiscoveryReport) -> str:
         lines.append(f"{len(r.excluded)} مورد به خاطر funding یا محل تحصیل کنار گذاشته شد (در لیست Checked and excluded).")
     if r.off_topic:
         lines.append(f"{r.off_topic} آگهی به حوزه‌ی کاری‌ات ربط نداشت.")
+
     if r.removed:
         lines.append(f"{len(r.removed)} آگهی از سایت برداشته شد و ردیفش خاکستری شد:")
         lines += [f"• {t}" for t in r.removed]
@@ -213,3 +218,87 @@ def report_fa(r: DiscoveryReport) -> str:
     if not r.complete or r.errors:
         lines.append(f"⚠️ همه‌چیز بررسی نشد: {'؛ '.join(r.errors[:5])}")
     return "\n".join(lines)
+
+
+DISCOVERED = "NEW. Found on"
+
+
+def _apply_verdict(s: Session, p: Position, verdict: str, reason: str):
+    from app.discovery.findaphd import project_id
+    if verdict == "exclude":
+        order = (s.scalar(select(ExcludedPosition.sort_order).order_by(ExcludedPosition.sort_order.desc())
+                          .limit(1)) or 0) + 1
+        s.add(ExcludedPosition(source=p.source, title=f"{p.university}: {p.title}",
+                               reason=fix_dash_connectors(reason), sort_order=order))
+    if p.source == "jobsac" and job_code(p.link):
+        _remember(_seen(s), job_code(p.link), f"{verdict}: {reason} (rechecked)", p.title, date.today())
+    elif p.source == "findaphd" and project_id(p.link):
+        s.merge(Meta(key=f"findaphd:{project_id(p.link)}", value=f"{verdict} (rechecked)"))
+    s.delete(p)
+
+
+def _untouched_discovered(s: Session) -> list[Position]:
+    return [p for p in s.scalars(select(Position).where(Position.status.contains(DISCOVERED),
+                                                        Position.closed.is_(False)))
+            if not (p.email_done or p.portal_done or p.email_sent or p.portal_submitted)]
+
+
+def forget_skipped(s: Session) -> int:
+    """Forget adverts skipped as off topic or low fit, so the next discovery run screens them again."""
+    n = 0
+    meta = s.get(Meta, SEEN_KEY)
+    if meta and meta.value:
+        keep = {k: v for k, v in meta.value.items()
+                if not str(v.get("verdict", "")).startswith(("off-topic", "off_topic", "low fit", "low_fit"))}
+        n += len(meta.value) - len(keep)
+        meta.value = keep
+    for m in s.scalars(select(Meta).where(Meta.key.like("findaphd:%"))):
+        if str(m.value).startswith(("off-topic", "off_topic", "low fit", "low_fit")):
+            s.delete(m)
+            n += 1
+    return n
+
+
+def recheck_discovered(s: Session, apply: bool = False, fetcher=None, llm=None, today: date | None = None
+                       ) -> list[tuple[Position, str, str]]:
+    """Apply the current screening rule to rows that discovery added and nobody has acted on.
+
+    Without a fetcher and model it uses the stored funding note (no cost). With them (rescore), it
+    reopens each jobs.ac.uk advert, screens it again and updates score, area and funding note.
+    Rows with an email or portal step are never touched."""
+    today = today or date.today()
+    out = []
+    for p in _untouched_discovered(s):
+        if fetcher is not None and llm is not None and p.source == "jobsac":
+            page = fetcher.get(p.link)
+            if not page.ok:
+                continue
+            a = parse_advert(page.html, p.link)
+            if not a.title or not a.description:
+                continue
+            try:
+                v = llm.complete("score_position", advert_prompt(a), context=build_context("score_position"),
+                                 instructions=SCREEN_INSTRUCTIONS, output=Screen)
+            except Exception:
+                continue
+            verdict, reason = decide(v, a.funding_for, a.funding_amount, a.description)
+            if verdict == "add":
+                if apply:
+                    p.score, p.funding = v.score, v.funding
+                    p.fit_note, p.type = fix_dash_connectors(v.funding_note), fix_dash_connectors(v.area)
+                    s.commit()
+                out.append((p, "rescored", f"score {v.score}"))
+                continue
+        else:
+            v = Screen.with_score(p.score or 0, topic_relevant=True, funding=p.funding if p.funding in
+                       ("full_international", "competition", "unclear", "home_only", "partial", "self_funded")
+                       else "unclear", funding_note=p.fit_note or "", england=True, supervisor_contact="",
+                       apply_method="Portal", application_route="", area="", note_fa="")
+            verdict, reason = decide(v, p.fit_note or "")
+            if verdict == "add":
+                continue
+        out.append((p, verdict, reason))
+        if apply:
+            _apply_verdict(s, p, verdict, reason)
+            s.commit()             # one row at a time: an open write would lock SQLite for the cost log
+    return out

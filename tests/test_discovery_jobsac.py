@@ -56,12 +56,16 @@ class FakeFetcher:
 
 
 def _v(**kw):
-    base = dict(topic_relevant=True, score=66, funding="full_international",
+    score = kw.pop("score", 66)
+    if "computing_share" in kw:
+        return Screen(**{**_BASE, **kw})
+    return Screen.with_score(score, **{**_BASE, **kw})
+
+
+_BASE = dict(topic_relevant=True, funding="full_international",
                 funding_note="Full tuition and UKRI stipend, open to international students.", england=True,
                 supervisor_contact="See advert", apply_method="Portal", application_route="Bristol PGR portal",
                 area="AI / decision making", note_fa="مرتبط است.")
-    base.update(kw)
-    return Screen(**base)
 
 
 def test_run_adds_excludes_dedupes_and_greys(db):
@@ -79,7 +83,7 @@ def test_run_adds_excludes_dedupes_and_greys(db):
         n_new = len(lp.listings) - 2       # minus the duplicate and the music one
         outputs = [_v(topic_relevant=False)]                         # DTR061 music: off topic
         outputs += [_v(funding="home_only", exclude_reason="Home fees only")]  # next one: excluded
-        outputs += [_v(score=70 - i % 30) for i in range(n_new)]     # the rest: added
+        outputs += [_v(score=70 - i % 15) for i in range(n_new)]     # the rest: added
         llm = FakeLLM({"score_position": outputs})
         f = FakeFetcher(removed_url=gone.link)
         rep = run_jobsac(s, f, llm, today=TODAY, progress=lambda *_: None)
@@ -98,3 +102,61 @@ def test_run_adds_excludes_dedupes_and_greys(db):
         llm2 = FakeLLM({"score_position": []})
         rep2 = run_jobsac(s, FakeFetcher(), llm2, today=TODAY, progress=lambda *_: None)
         assert llm2.calls == [] and rep2.new == [] and len(s.get(Meta, "seen:jobsac").value) == 25
+
+
+def test_decide_has_no_minimum_score_but_checks_funding():
+    from app.discovery.screen import decide
+    assert decide(_v(score=20))[0] == "add"                      # interdisciplinary, low score: still tracked
+    assert decide(_v(score=80, topic_relevant=False))[0] == "off_topic"
+    assert decide(_v(funding_note="Stipend and tuition at home-fee level via CENTA3 DLA"))[0] == "exclude"
+    assert decide(_v(), "Funding for: UK Students", "fees at the UK rate")[0] == "exclude"
+    assert decide(_v(funding="unclear"))[0] == "add"
+    assert decide(_v(funding_note="Fees at the international rate are waived, for a limited number "
+                                  "of international studentships"))[0] == "add"
+
+
+def test_score_is_the_sum_of_its_parts():
+    v = _v(score=99, computing_share=30, skills_fit=25, topic_proximity=5)
+    assert v.score == 60                                          # the model's own total is ignored
+    assert _v(score=66).score == 66 and _v(score=95).score == 95
+
+
+def test_recheck_moves_unfunded_rows_out_and_rescore(db):
+    from app.db.base import session_scope
+    from app.discovery.pipeline import forget_skipped, recheck_discovered
+    with session_scope() as s:
+        def row(title, score, note, code, **kw):
+            p = Position(source="jobsac", title=title, university="U", score=score, funding="full_international",
+                         fit_note=note, link=f"https://www.jobs.ac.uk/job/{code}/x", **kw)
+            p.add_status("NEW. Found on jobs.ac.uk, funding for: x.", on=TODAY)
+            s.add(p)
+            return p
+        row("Agentic AI", 75, "Full fees and stipend for international students", "DA1")
+        row("Aviation fuels with ML", 35, "Full fees and stipend for international students", "DA2")
+        row("Control", 60, "fees at the UK rate", "DA3")
+        row("Emailed already", 40, "fees at the UK rate", "DA4", email_done=True)
+        s.flush()
+        assert [p.title for p, _, _ in recheck_discovered(s)] == ["Control"]
+        recheck_discovered(s, apply=True)
+        assert {p.title for p in s.scalars(select(Position))} == {"Agentic AI", "Aviation fuels with ML",
+                                                                   "Emailed already"}
+        assert s.scalar(select(ExcludedPosition.title)) == "U: Control"
+
+        # rescore: reopen the advert and screen again with the new rubric
+        llm = FakeLLM({"score_position": [_v(score=0, computing_share=35, skills_fit=30, topic_proximity=10),
+                                          _v(score=0, computing_share=20, skills_fit=20, topic_proximity=2)]})
+        out = recheck_discovered(s, apply=True, fetcher=FakeFetcher(), llm=llm)
+        assert sorted(v for _, v, _ in out) == ["rescored", "rescored"]
+        assert {p.title: p.score for p in s.scalars(select(Position)) if p.title != "Emailed already"} == \
+            {"Agentic AI": 75, "Aviation fuels with ML": 42}
+
+        meta = s.get(Meta, "seen:jobsac")
+        meta.value = {**meta.value, "DX1": {"verdict": "off-topic"}, "DX2": {"verdict": "low fit: score 40"}}
+        assert forget_skipped(s) == 2 and "DX1" not in s.get(Meta, "seen:jobsac").value
+
+
+def test_enhanced_advert_layout():
+    html = (FIX / "jobsac_advert_enhanced.html").read_text(encoding="utf-8")
+    a = parse_advert(html, "https://www.jobs.ac.uk/job/DTN265/x")
+    assert a.title == "UKRI Funded PhD in Safe Artificial Intelligence" and a.employer == "University of York"
+    assert a.funding_for == "UK Students" and a.closes == "11 Jan 2027" and len(a.description) > 1000

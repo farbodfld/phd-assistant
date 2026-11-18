@@ -85,20 +85,45 @@ def parse_list(html: str) -> ListPage:
     return ListPage(out, page, pages, nxt)
 
 
+def _page_title_parts(soup) -> tuple[str, str]:
+    """'<title>PhD in X at University of Y</title>' -> ('PhD in X', 'University of Y')."""
+    t = _txt(soup.title)
+    if " at " in t:
+        left, right = t.rsplit(" at ", 1)
+        return left.strip(), right.strip()
+    return t, ""
+
+
+def _description(soup) -> str:
+    """Standard adverts use #job-description; enhanced (employer-branded) adverts use their own
+    containers, so fall back to the block with the most paragraphs."""
+    for sel in ("#job-description", ".j-enhanced__advert-text"):
+        d = soup.select_one(sel)
+        if d and len(d.get_text(strip=True)) > 200:
+            return d.get_text("\n", strip=True)
+    blocks = soup.find_all(["div", "section", "article"])
+    best = max(blocks, key=lambda e: len(e.find_all("p", recursive=False)), default=None)
+    return best.get_text("\n", strip=True) if best and best.find_all("p", recursive=False) else ""
+
+
 def parse_advert(html: str, url: str) -> Advert:
     soup = BeautifulSoup(html, "lxml")
     table = {}
-    for th in soup.select("th.j-advert-details__table-header"):
-        table[_txt(th).rstrip(":").lower()] = _txt(th.find_next_sibling("td"))
-    desc = soup.select_one("#job-description")
+    for th in soup.select("th"):                    # standard and enhanced adverts share these rows
+        key = _txt(th)
+        if key.endswith(":") and th.find_next_sibling("td") is not None:
+            table.setdefault(key.rstrip(":").lower(), _txt(th.find_next_sibling("td")))
     apply = soup.select_one(".row-7 a[href]") or soup.select_one("a[href] #job-apply-button")
     apply_url = apply["href"] if apply and apply.name == "a" else ""
     subjects = [i.get("value", "") for i in soup.select("input.parent-category, input.child-category")]
     closes = tidy_date(table.get("closes", ""))
+    page_title, page_employer = _page_title_parts(soup)
     return Advert(
-        code=job_code(url) or "", url=url, title=_txt(soup.select_one("h1.j-advert__title")),
-        employer=_txt(soup.select_one(".j-advert__employer")), location=table.get("location", ""),
+        code=job_code(url) or "", url=url,
+        title=_txt(soup.select_one("h1.j-advert__title")) or page_title,
+        employer=_txt(soup.select_one(".j-advert__employer")) or page_employer,
+        location=table.get("location", ""),
         funding_for=table.get("funding for", ""), funding_amount=table.get("funding amount", ""),
         hours=table.get("hours", ""), placed_on=tidy_date(table.get("placed on", "")), closes=closes,
         closes_date=parse_deadline(closes), apply_url=apply_url, subjects=[s for s in subjects if s],
-        description=desc.get_text("\n", strip=True) if desc else "")
+        description=_description(soup))

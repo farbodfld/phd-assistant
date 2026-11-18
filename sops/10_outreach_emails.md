@@ -11,6 +11,9 @@ supervisor want him as a student.
 - Close with forward momentum: ready to apply formally, CV attached, happy to send transcripts.
 - Attach the master CV. Attach statement or proposal only when the advert asks for one.
 - 150 to 250 words. Subject names the project.
+- One project, one thread: every project gets its own new email thread, even when the
+  supervisor is the same person Farbod already wrote to about another project. Never reply in
+  another project's thread to raise a second project. The subject names only that project.
 
 ## Never
 - "Should I apply?", "Do you recommend I apply?", "Should I strengthen X first?"

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     daily_run_time: str = "09:00"           # site sweep, outreach and reminder drafts, report
     findaphd_archive_dir: Path = ROOT / "data" / "findaphd"
     findaphd_page_wait_seconds: PositiveInt = 40
+    failed_pages_dir: Path = ROOT / "data" / "samples" / "failed"
 
     # Telegram (phase 6)
     telegram_bot_token: str = ""

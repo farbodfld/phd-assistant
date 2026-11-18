@@ -39,6 +39,13 @@ def main(argv=None):
     dv.add_argument("--source", choices=["jobsac", "findaphd"], default="jobsac")
     dv.add_argument("--max-pages", type=int, help="optional limit for a partial run (default: all pages)")
     dv.add_argument("--today", type=date.fromisoformat, default=None)
+    dv.add_argument("--retry-skipped", action="store_true",
+                    help="screen again the adverts earlier judged off topic (after a rule change)")
+    rc = sub.add_parser("discover-recheck", help="re-screen rows added by discovery with the current rules")
+    rc.add_argument("--apply", action="store_true", help="make the changes (default: only list them)")
+    rc.add_argument("--rescore", action="store_true",
+                    help="reopen each jobs.ac.uk advert and screen it again with the current scoring (small model cost), "
+                         "and let the next discover run re-screen adverts skipped as off topic or low fit")
     sub.add_parser("probe-sites", help="check that jobs.ac.uk can be read from here; saves samples")
     sub.add_parser("probe-findaphd", help="test live access to a FindAPhD list and advert from this host")
     sub.add_parser("serve", help="run daily discovery on jobs.ac.uk and FindAPhD")
@@ -133,12 +140,37 @@ def main(argv=None):
         if args.max_pages is not None and args.max_pages < 1:
             ap.error("--max-pages must be positive")
         from app.discovery.worker import discover
+        if args.retry_skipped:
+            from app.discovery.pipeline import forget_skipped
+            with session_scope() as s:
+                print(f"{forget_skipped(s)} skipped advert(s) queued for screening again")
         report = discover(args.today, args.max_pages, source=args.source)
         if report is None:
             raise SystemExit("Discovery is already running")
         print(report.summary())
         if report.errors:
             raise SystemExit(1)
+    elif args.cmd == "discover-recheck":
+        from app.discovery.pipeline import forget_skipped, recheck_discovered
+        fetcher = llm = None
+        if args.rescore:
+            from app.discovery.fetch import HttpFetcher
+            from app.llm.client import LLMClient
+            fetcher, llm = HttpFetcher(delay=3.5), LLMClient()
+        try:
+            with session_scope() as s:
+                out = recheck_discovered(s, apply=args.apply, fetcher=fetcher, llm=llm)
+                for p, verdict, reason in out:
+                    print(f"{p.score or 0:>3}  {verdict:9}  {p.title[:70]}  |  {reason[:80]}")
+                moved = sum(v != "rescored" for _, v, _ in out)
+                print(f"{moved} row(s) {'moved out of the tracker' if args.apply else 'would leave the tracker'}, "
+                      f"{len(out) - moved} rescored{'' if args.apply else ' (dry run; add --apply)'}")
+                if args.rescore and args.apply:
+                    print(f"{forget_skipped(s)} skipped advert(s) will be screened again by the next discover run")
+                    s.commit()
+        finally:
+            if fetcher:
+                fetcher.close()
     elif args.cmd == "probe-sites":
         from app.discovery.probe import probe
         out = ROOT / "data" / "samples"

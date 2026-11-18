@@ -45,8 +45,14 @@ class FindAPhDBrowser:
                 self.close()
                 return Page(url, 0, "", self.method, error=f"browser startup: {exc}")
         self._polite.wait()
-        detail = "/phds/project/" in url
-        selector = ".phd-sections__description .phd-sections__content" if detail else "#SearchResults"
+        detail = "/phds/project/" in url or "/phds/program" in url
+        if "/phds/project/" in url:
+            selector = ".phd-sections__description .phd-sections__content"
+        elif detail:
+            # Programme pages are free-form; the canonical link only exists on the real page, not a challenge.
+            selector = 'link[rel~="canonical"][href*="/phds/program"]'
+        else:
+            selector = "#SearchResults"
         self._status = 0
         try:
             self._page.goto(url, referer=self._last_list, wait_until="domcontentloaded", timeout=45000)

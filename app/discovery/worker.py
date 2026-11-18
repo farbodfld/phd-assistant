@@ -1,5 +1,6 @@
-"""Daily discovery and one-shot runs for both sources."""
+"""Daily discovery for both sources, inbox checks at fixed times, and the `phd serve` loop."""
 import logging
+import threading
 from dataclasses import asdict
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
@@ -13,7 +14,9 @@ from app.discovery.fetch import HttpFetcher
 from app.discovery.findaphd_browser import FindAPhDBrowser
 from app.discovery.findaphd import run_findaphd
 from app.discovery.pipeline import run_jobsac
+from app.gmail.client import GmailClient
 from app.llm.client import LLMClient
+from app.mail.inbox import check_inbox, retry_unprocessed
 from app.rules.engine import run_checks
 from app.scheduler import run_forever
 
@@ -81,11 +84,56 @@ def daily_discovery():
             logging.exception("%s discovery failed", source)
 
 
-def serve():
+def inbox_check(now: datetime | None = None):
+    """One scheduled inbox check: store and analyse new PhD email, then retry earlier failures."""
     settings = get_settings()
-    logging.basicConfig(level=logging.INFO)
+    today = (now or datetime.now(ZoneInfo(settings.timezone))).date()
+    with session_scope() as s:
+        run = Run(kind="inbox")
+        s.add(run)
+        s.commit()
+        run_id = run.id
+    errors = []
+    try:
+        gmail = GmailClient()
+        with session_scope() as s:
+            llm = LLMClient(run_id=run_id)
+            report = check_inbox(s, gmail, llm)
+            s.commit()
+            errors += report.errors
+            try:
+                retried = retry_unprocessed(s, gmail, llm, today)
+            except Exception as exc:                 # the email stays unprocessed for the next check
+                retried = 0
+                errors.append(f"retry: {type(exc).__name__}: {exc}")
+            if report.stored or retried:
+                run_checks(s, today)
+    except Exception as exc:
+        with session_scope() as s:
+            run = s.get(Run, run_id)
+            run.ok, run.finished_at = False, datetime.now(timezone.utc)
+            run.report = {"error": f"{type(exc).__name__}: {exc}"}
+            s.add(Notification(kind="report", ref_type="inbox", text=f"بررسی اینباکس ناموفق | {type(exc).__name__}"))
+        raise
+    with session_scope() as s:
+        run = s.get(Run, run_id)
+        run.ok, run.finished_at = not errors, datetime.now(timezone.utc)
+        run.report = {**asdict(report), "retried": retried, "errors": errors}
+    logging.info("inbox: %s stored, %s analysed, %s drafts, %s retried, %s errors",
+                 report.stored, report.analysed, report.drafts, retried, len(errors))
+    return report
 
+
+def _discovery_loop(settings):
     # Catch today's missed run after a restart.
     if datetime.now(ZoneInfo(settings.timezone)).time() >= time.fromisoformat(settings.daily_run_time):
         daily_discovery()
     run_forever({"discovery": ([settings.daily_run_time], daily_discovery)}, settings.timezone)
+
+
+def serve():
+    """Discovery runs in its own thread: a long FindAPhD sweep must not delay the inbox checks."""
+    settings = get_settings()
+    logging.basicConfig(level=logging.INFO)
+    threading.Thread(target=_discovery_loop, args=(settings,), name="discovery", daemon=True).start()
+    run_forever({"inbox": (settings.inbox_check_times, inbox_check)}, settings.timezone)

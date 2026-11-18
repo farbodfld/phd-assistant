@@ -1,8 +1,9 @@
 """One cheap model call per new advert: topic fit, funding for an international student, score."""
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.config import get_settings
 from app.rules.funding import classify_funding
 
 NOT_FUNDED = ("home_only", "partial", "self_funded")
@@ -24,6 +25,16 @@ class Screen(BaseModel):
     area: str = Field(description="Two to five word research area label, e.g. 'AI / health data'")
     note_fa: str = Field(description="One short Persian sentence explaining the fit or exclusion")
     exclude_reason: str | None = Field(default=None, description="Short English reason when funding or location rules it out")
+
+    @field_validator("computing_share", "skills_fit", "topic_proximity", mode="before")
+    @classmethod
+    def _clamp_parts(cls, v, info):
+        """A part slightly outside its range (e.g. 42 of 40) is clamped instead of failing the whole screen."""
+        limit = {"computing_share": 40, "skills_fit": 40, "topic_proximity": 20}[info.field_name]
+        try:
+            return max(0, min(limit, round(float(v))))
+        except (TypeError, ValueError):
+            return v
 
     @model_validator(mode="after")
     def _sum_parts(self):
@@ -68,8 +79,9 @@ def advert_prompt(a) -> str:
 
 
 def decide(v: Screen, *advert_text: str) -> tuple[str, str]:
-    """('add' | 'exclude' | 'off_topic', reason). There is no minimum score. The model's funding view is
-    checked against the deterministic funding rules, and either one saying 'not funded' excludes."""
+    """('add' | 'exclude' | 'off_topic' | 'low_fit', reason). The model's funding view is checked against
+    the deterministic funding rules, and either one saying 'not funded' excludes. A relevant, funded
+    position scoring below MIN_SCORE (default 35) is not tracked."""
     if not v.topic_relevant:
         return "off_topic", "no substantial computational part"
     if not v.england:
@@ -77,4 +89,7 @@ def decide(v: Screen, *advert_text: str) -> tuple[str, str]:
     rule, why = classify_funding(*advert_text, v.funding_note)
     if v.funding in NOT_FUNDED or rule in NOT_FUNDED:
         return "exclude", v.exclude_reason or v.funding_note or why
+    minimum = get_settings().min_score
+    if v.score < minimum:
+        return "low_fit", f"score {v.score} below {minimum}"
     return "add", ""

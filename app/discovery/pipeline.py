@@ -12,6 +12,7 @@ from app.discovery.jobsac import Advert, job_code, parse_advert, parse_list
 from app.discovery.screen import SCREEN_INSTRUCTIONS, Screen, advert_prompt, decide
 from app.discovery.sources import JOBSAC
 from app.knowledge.loader import build_context, institutions_for
+from app.llm.client import LLMRefused
 from app.rules.text_checks import fix_dash_connectors
 
 SEEN_KEY = "seen:jobsac"
@@ -41,9 +42,11 @@ class DiscoveryReport:
     new: list[str] = field(default_factory=list)
     excluded: list[str] = field(default_factory=list)
     off_topic: int = 0
+    low_fit: int = 0
     duplicates: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
     removed_active: list[str] = field(default_factory=list)
+    review: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def summary(self):
@@ -172,6 +175,11 @@ def run_jobsac(s: Session, fetcher, llm, today: date | None = None, max_pages: i
         try:
             v = llm.complete("score_position", advert_prompt(a), context=build_context("score_position"),
                              instructions=SCREEN_INSTRUCTIONS, output=Screen)
+        except LLMRefused:                 # repeats on every retry: record once, show for a manual look
+            _remember(meta, l.code, "needs manual review: model declined", a.title, today)
+            rep.review.append(f"{a.title} ({university_of(a.employer)}) {l.url}")
+            s.commit()
+            continue
         except Exception as e:             # one bad advert must not stop the run
             rep.errors.append(f"{l.code}: screening failed ({type(e).__name__})")
             continue
@@ -179,6 +187,9 @@ def run_jobsac(s: Session, fetcher, llm, today: date | None = None, max_pages: i
         if verdict == "off_topic":
             _remember(meta, l.code, "off-topic", a.title, today)
             rep.off_topic += 1
+        elif verdict == "low_fit":
+            _remember(meta, l.code, f"low fit: {reason}", a.title, today)
+            rep.low_fit += 1
         elif verdict == "exclude":
             _exclude(s, a, fix_dash_connectors(reason))
             _remember(meta, l.code, f"excluded: {reason}", a.title, today)
@@ -208,7 +219,12 @@ def report_fa(r: DiscoveryReport) -> str:
         lines.append(f"{len(r.excluded)} مورد به خاطر funding یا محل تحصیل کنار گذاشته شد (در لیست Checked and excluded).")
     if r.off_topic:
         lines.append(f"{r.off_topic} آگهی به حوزه‌ی کاری‌ات ربط نداشت.")
+    if r.low_fit:
+        lines.append(f"{r.low_fit} آگهی score کمتر از حداقل داشت و ذخیره نشد.")
 
+    if r.review:
+        lines.append(f"{len(r.review)} آگهی رو مدل بررسی نکرد (refusal)، خودت دستی نگاهشون کن:")
+        lines += [f"• {t}" for t in r.review]
     if r.removed:
         lines.append(f"{len(r.removed)} آگهی از سایت برداشته شد و ردیفش خاکستری شد:")
         lines += [f"• {t}" for t in r.removed]

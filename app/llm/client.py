@@ -28,6 +28,10 @@ class LLMOutputError(RuntimeError):
     """The model did not return a valid structured answer, even after a retry."""
 
 
+class LLMRefused(LLMOutputError):
+    """The model declined this input (stop_reason=refusal). Retrying gives the same answer."""
+
+
 def spent_today() -> float:
     start = datetime.combine(date.today(), time.min)
     with session_scope() as s:
@@ -83,11 +87,15 @@ class LLMClient:
                     resp = self._sdk.messages.parse(output_format=output, **kwargs)
                 except ValidationError as err:
                     # the SDK validates the JSON itself: a cut-off or malformed answer lands here
-                    problem = f"invalid JSON ({err.errors()[0].get('type', '?')})"
+                    problem = "invalid output: " + "; ".join(
+                        f"{'.'.join(map(str, e.get('loc', ()))) or 'answer'}: {e.get('msg', e.get('type', '?'))}"
+                        for e in err.errors()[:3])
                 else:
                     self._record(task, model, resp.usage)
                     if resp.parsed_output is not None:
                         return resp.parsed_output
+                    if getattr(resp, "stop_reason", None) == "refusal":
+                        raise LLMRefused(f"{task}: the model declined to answer (stop_reason=refusal)")
                     problem = f"stop_reason={getattr(resp, 'stop_reason', '?')}"
                 # try again with more room to finish
                 kwargs["max_tokens"] = kwargs["max_tokens"] * 2

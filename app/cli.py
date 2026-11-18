@@ -36,7 +36,8 @@ def main(argv=None):
     an = sub.add_parser("analyse", help="dry run: Opus analyses the last N stored incoming emails, nothing is changed")
     an.add_argument("--last", type=int, default=1)
     dv = sub.add_parser("discover", help="find new positions and update the tracker")
-    dv.add_argument("--source", choices=["jobsac", "findaphd"], default="jobsac")
+    dv.add_argument("--source", choices=["all", "jobsac", "findaphd"], default="all",
+                    help="which site to sweep (default: both, jobs.ac.uk first)")
     dv.add_argument("--max-pages", type=int, help="optional limit for a partial run (default: all pages)")
     dv.add_argument("--today", type=date.fromisoformat, default=None)
     dv.add_argument("--retry-skipped", action="store_true",
@@ -144,11 +145,14 @@ def main(argv=None):
             from app.discovery.pipeline import forget_skipped
             with session_scope() as s:
                 print(f"{forget_skipped(s)} skipped advert(s) queued for screening again")
-        report = discover(args.today, args.max_pages, source=args.source)
-        if report is None:
-            raise SystemExit("Discovery is already running")
-        print(report.summary())
-        if report.errors:
+        failed = False
+        for source in (["jobsac", "findaphd"] if args.source == "all" else [args.source]):
+            report = discover(args.today, args.max_pages, source=source)
+            if report is None:
+                raise SystemExit("Discovery is already running")
+            print(report.summary())
+            failed = failed or bool(report.errors)
+        if failed:
             raise SystemExit(1)
     elif args.cmd == "discover-recheck":
         from app.discovery.pipeline import forget_skipped, recheck_discovered

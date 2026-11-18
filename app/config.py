@@ -25,11 +25,13 @@ class Settings(BaseSettings):
     model_strong: str = "claude-opus-5-5"   # writing and judgement
     model_cheap: str = "claude-haiku-5-5"   # classification, scoring, summaries
     daily_budget_usd: float = 3.0           # hard stop for LLM spend per day
+    min_score: int = 35                     # discovered positions scoring below this are not tracked
 
-    # Schedule (Europe/London). Inbox is checked at these times only; when new
-    # PhD-related email is found, the run carries on and processes it fully.
+    # Schedule (Europe/London). Inbox is checked at these times only (08:00 to 20:00); when new
+    # PhD-related email is found, the run carries on and processes it fully. Discovery runs once a day
+    # in its own thread, so a long site sweep never delays an inbox check.
     timezone: str = "Europe/London"
-    inbox_check_times: list[str] = ["09:00", "14:00", "17:00", "20:00"]
+    inbox_check_times: list[str] = ["08:00", "14:00", "17:00", "20:00"]
     daily_run_time: str = "09:00"           # site sweep, outreach and reminder drafts, report
     findaphd_archive_dir: Path = ROOT / "data" / "findaphd"
     findaphd_page_wait_seconds: PositiveInt = 40

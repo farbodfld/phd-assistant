@@ -95,8 +95,18 @@ docker compose logs app
 `phd serve` schedules jobs.ac.uk followed by FindAPhD at `DAILY_RUN_TIME`
 (default 09:00 in `Europe/London`). Each source has a separate run report
 and same-day restart marker. A failure in one leaves the other scheduled.
-Run either source manually with `phd discover --source jobsac` or
-`phd discover --source findaphd`. FindAPhD saves validated
+The same `phd serve` process checks Gmail at `INBOX_CHECK_TIMES` (default
+08:00, 14:00, 17:00 and 20:00), stores and analyses new PhD email, writes
+reply drafts and retries emails whose analysis failed. Discovery runs in its
+own thread, so a long sweep never delays an inbox check. Gmail needs the
+OAuth files: run `phd gmail-auth` on your computer once, then copy the
+`secrets/` folder next to `docker-compose.yml` on the server (it is mounted
+into the container and the token is refreshed there).
+Run both manually with `phd discover` (jobs.ac.uk, then FindAPhD), or one
+source with `--source jobsac` or `--source findaphd`. FindAPhD reads both
+single projects (`/phds/project/`) and doctoral programmes (`/phds/program/`,
+such as DTPs, DLAs and CDTs). A programme listed under several partner
+institutions is stored and screened once. FindAPhD saves validated
 HTML on the server's `findaphd` volume, reuses details for seven days, and
 records project IDs, suitable positions and run reports in the database.
 The worker launches the same Patchright and headed Chrome combination as the
@@ -106,7 +116,6 @@ Chrome on x86-64 and Debian Chromium on ARM. The scheduled worker waits up to
 40 seconds for real listing or advert markup on each navigation, including an
 automatic reload after a challenge. On a Windows laptop, install Chrome and
 the project's Python dependencies before running `phd probe-findaphd`.
-The existing `phd discover` command still runs jobs.ac.uk.
 
 An unresolved challenge, denied request or unrecognised results page produces an
 incomplete report. Existing tracker rows stay active. The next scheduled run

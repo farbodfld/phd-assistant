@@ -20,6 +20,6 @@ chemistry or physics degree stated as essential).
    systems, anomaly detection, data pipelines, production software).
 3. topic_proximity (0 to 20): how close the subject is to his past work (thesis topics and
    projects). An unfamiliar domain is fine and simply scores lower here.
-Use only verified facts. There is no minimum score: every relevant, funded position is tracked.
+Use only verified facts. Minimum score 35: a relevant, funded position scoring below 35 is not tracked.
 Colour key in the tracker: green 70+, yellow 50 to 69, orange 35 to 49, red below 35.
 Priority to act: supervisors who replied positively first, then nearest deadlines.

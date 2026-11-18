@@ -104,9 +104,11 @@ def test_run_adds_excludes_dedupes_and_greys(db):
         assert llm2.calls == [] and rep2.new == [] and len(s.get(Meta, "seen:jobsac").value) == 25
 
 
-def test_decide_has_no_minimum_score_but_checks_funding():
+def test_decide_minimum_score_and_funding():
     from app.discovery.screen import decide
-    assert decide(_v(score=20))[0] == "add"                      # interdisciplinary, low score: still tracked
+    assert decide(_v(score=34)) == ("low_fit", "score 34 below 35")
+    assert decide(_v(score=35))[0] == "add"
+    assert decide(_v(score=20, funding="home_only"))[0] == "exclude"   # funding reason wins over low score
     assert decide(_v(score=80, topic_relevant=False))[0] == "off_topic"
     assert decide(_v(funding_note="Stipend and tuition at home-fee level via CENTA3 DLA"))[0] == "exclude"
     assert decide(_v(), "Funding for: UK Students", "fees at the UK rate")[0] == "exclude"

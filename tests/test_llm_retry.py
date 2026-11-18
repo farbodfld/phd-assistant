@@ -43,3 +43,17 @@ def test_backfill_keeps_thread_when_model_cannot_decide(db):
     from tests.fakes import make_msg
     e = parse_message(make_msg("a", "t", "dr.x@leeds.ac.uk", "me@x.com", "Hello", "body", datetime(2026, 10, 1)), "me@x.com")
     assert _is_relevant(LLMClient(sdk_client=_SDK([None, "broken", None])), e) is True
+
+
+def test_refusal_is_not_retried(db):
+    from app.llm.client import LLMClient, LLMRefused
+
+    class Refusing(_SDK):
+        def parse(self, output_format, **kw):
+            self.max_tokens.append(kw["max_tokens"])
+            return SimpleNamespace(parsed_output=None, usage=_Usage(), stop_reason="refusal")
+
+    sdk = Refusing([])
+    with pytest.raises(LLMRefused):
+        LLMClient(sdk_client=sdk).complete("email_relevance", "x", output=Relevance)
+    assert sdk.max_tokens == [500]

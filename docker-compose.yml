@@ -22,12 +22,16 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://phd:${POSTGRES_PASSWORD:-change-me}@db:5432/phd}
       FINDAPHD_ARCHIVE_DIR: /data/findaphd
+      SECRETS_DIR: /srv/secrets
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - positions:/data/positions
       - findaphd:/data/findaphd
+      # Gmail OAuth client and token (run `phd gmail-auth` on your computer, then copy secrets/ to the server).
+      # Writable: the token is refreshed in place.
+      - ./secrets:/srv/secrets
     command: ["phd", "serve"]
 
 volumes:

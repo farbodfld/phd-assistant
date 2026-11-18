@@ -8,3 +8,7 @@ knowledge/private.yaml
 secrets/
 .venv/
 *.egg-info/
+
+# Local project dumps (contain secrets/ and private.yaml)
+project_dump.txt
+dump_project.py

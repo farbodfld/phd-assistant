@@ -154,3 +154,33 @@ content appears. The server reuses the profile in future runs; the site
 controls the validity of the session. If the site consistently requires
 human input, ask FindAPhD for an approved automated feed or access for the
 server IP. Keep port 5901 closed in the Lightsail firewall.
+
+## Phase 5: first emails, reminders, statements and proposals
+
+Right after the daily discovery, `phd serve` drafts:
+
+- a first email for every open position whose route includes emailing the supervisor
+  (SOP 10), ordered by deadline then score, with the master CV attached;
+- a statement or proposal (Word and PDF, in the position folder) only when the advert asks
+  for one with the enquiry; universities that ban AI writing get a reference draft that is
+  never attached;
+- reminders 14 days after the last email, as replies in the project's own thread (SOP 20).
+
+Every email is a draft. Until the Telegram bot (phase 6), each draft is also created in Gmail
+Drafts: read it, edit if needed and press Send. The next inbox check or outreach run sees it
+in Sent and records it on the row (Email ✓, Email Sent, Reminder 1/2). A Gmail draft you
+delete counts as denied. Positions without a supervisor address become a task for you.
+The daily LLM budget (`DAILY_BUDGET_USD`) spreads a large backlog over several days.
+
+Put the master CV in `data/documents/` (the name in `knowledge/profile.yaml`,
+`documents.master_cv`). On the server, put it in `documents/` next to `docker-compose.yml`.
+
+```sh
+phd outreach --limit 3          # run now, at most 3 first emails
+phd drafts                      # what is waiting
+phd draft-show 12               # one draft in full
+phd draft-initial 42            # first email for one position
+phd write-statement 42          # statement for one position (Word and PDF)
+phd write-proposal 42           # proposal for one position
+phd sync-drafts                 # push to Gmail Drafts and record what you sent
+```

@@ -49,6 +49,23 @@ def main(argv=None):
                          "and let the next discover run re-screen adverts skipped as off topic or low fit")
     sub.add_parser("probe-sites", help="check that jobs.ac.uk can be read from here; saves samples")
     sub.add_parser("probe-findaphd", help="test live access to a FindAPhD list and advert from this host")
+    ot = sub.add_parser("outreach", help="draft due reminders and first emails now (Gmail drafts until phase 6)")
+    ot.add_argument("--limit", type=int, help="at most this many first emails in this run")
+    ot.add_argument("--today", type=date.fromisoformat, default=None)
+    di = sub.add_parser("draft-initial", help="draft the first email for one position now")
+    di.add_argument("position_id", type=int)
+    for name, kind in (("write-statement", "statement"), ("write-proposal", "proposal")):
+        w = sub.add_parser(name, help=f"write a {kind} (Word and PDF) into the position folder")
+        w.add_argument("position_id", type=int)
+    dl = sub.add_parser("drafts", help="list drafts waiting for you")
+    dl.add_argument("--all", action="store_true", help="include sent and deleted drafts")
+    ds = sub.add_parser("draft-show", help="print one draft in full")
+    ds.add_argument("draft_id", type=int)
+    sub.add_parser("sync-drafts", help="push pending drafts to Gmail and record the ones you sent")
+    sd = sub.add_parser("send-drafts", help="send drafts you have reviewed (their Gmail drafts, with your edits)")
+    sd.add_argument("ids", type=int, nargs="*", help="draft numbers from `phd drafts`")
+    sd.add_argument("--all", action="store_true", help="every pending draft")
+    sd.add_argument("--except", dest="skip", type=int, nargs="*", default=[], help="draft numbers to leave out")
     sub.add_parser("serve", help="run daily discovery on jobs.ac.uk and FindAPhD")
     args = ap.parse_args(argv)
 
@@ -180,6 +197,85 @@ def main(argv=None):
         out = ROOT / "data" / "samples"
         probe(out)
         print(f"samples saved in {out}")
+    elif args.cmd == "outreach":
+        from app.discovery.worker import outreach
+        report = outreach(args.today, args.limit)
+        print(report.summary())
+    elif args.cmd in ("draft-initial", "write-statement", "write-proposal"):
+        from app.db.models import Position
+        from app.discovery.fetch import HttpFetcher
+        from app.llm.client import LLMClient
+        from app.outreach.advert import advert_text
+        fetcher = HttpFetcher()
+        try:
+            with session_scope() as s:
+                p = s.get(Position, args.position_id)
+                if p is None:
+                    raise SystemExit(f"no position #{args.position_id}")
+                if args.cmd == "draft-initial":
+                    from app.db.models import Meta
+                    from app.outreach.initial import draft_initial
+                    m = s.get(Meta, f"outreach:{p.id}")
+                    if m:
+                        s.delete(m)
+                    d = draft_initial(s, p, LLMClient(), date.today(), fetcher)
+                    print(f"draft #{d.id} to {d.to}: {d.subject}" if d else "no draft (see notifications)")
+                else:
+                    from app.outreach.documents import write_document
+                    kind = "statement" if args.cmd == "write-statement" else "proposal"
+                    w = write_document(s, p, kind, LLMClient(), advert_text(p, fetcher))
+                    print(w.pdf)
+                    print(w.docx)
+                    for line in w.notes_fa + w.issues:
+                        print("-", line)
+        finally:
+            fetcher.close()
+    elif args.cmd == "drafts":
+        from sqlalchemy import select
+        from app.db.models import Draft
+        with session_scope() as s:
+            q = select(Draft).order_by(Draft.id)
+            if not args.all:
+                q = q.where(Draft.status.in_(("pending", "approved")))
+            for d in s.scalars(q):
+                flag = " ⚠" if d.issues else ""
+                print(f"#{d.id:<4} {d.status:8} {d.kind:8} {d.to[:38]:38} {d.subject[:60]}{flag}")
+    elif args.cmd == "draft-show":
+        from app.db.models import Draft
+        with session_scope() as s:
+            d = s.get(Draft, args.draft_id)
+            if d is None:
+                raise SystemExit(f"no draft #{args.draft_id}")
+            print(f"To: {d.to}\nSubject: {d.subject}\nStatus: {d.status}\n")
+            print(d.body)
+            for a in d.attachments or []:
+                print("Attachment:", a)
+            for n in (d.notes or []) + (d.issues or []):
+                print("-", n)
+    elif args.cmd == "send-drafts":
+        from sqlalchemy import select
+        from app.db.models import Draft
+        from app.gmail.client import GmailClient
+        from app.outreach.gmail_sync import send_approved
+        if not args.ids and not args.all:
+            ap.error("give draft numbers, or --all")
+        gmail = GmailClient()
+        with session_scope() as s:
+            ids = args.ids or list(s.scalars(select(Draft.id).where(Draft.status == "pending")))
+            ids = [i for i in ids if i not in set(args.skip)]
+            r = send_approved(s, gmail, ids, date.today())
+            print(f"sent: {r['sent']}")
+            if r["missing"]:
+                print(f"not sent (no Gmail draft, you may have deleted it): {r['missing']}")
+            print(f"recorded on the tracker: {len(r['recorded'])}")
+    elif args.cmd == "sync-drafts":
+        from app.gmail.client import GmailClient
+        from app.outreach.gmail_sync import push_drafts, sync_drafts
+        gmail = GmailClient()
+        with session_scope() as s:
+            done = sync_drafts(s, gmail, date.today())
+            print(f"sent: {len(done['sent'])}, deleted: {len(done['deleted'])}, "
+                  f"new Gmail drafts: {push_drafts(s, gmail)}")
     elif args.cmd == "serve":
         from app.discovery.worker import serve
         serve()

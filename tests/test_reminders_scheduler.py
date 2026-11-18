@@ -47,3 +47,22 @@ def test_reminders(db):
         assert set(due) == {"no reply 28 days", "second"}
         assert due["no reply 28 days"].number == 1 and due["no reply 28 days"].thread_id == "t1"
         assert due["second"].number == 2 and due["second"].thread_id is None
+
+
+def test_no_reminder_after_any_reply_and_thread_follow_ups_count(db):
+    from app.db.base import session_scope
+    from app.mail.reminders import reminders_due
+    today = date(2026, 11, 18)
+    with session_scope() as s:
+        talked = _pos(s, title="supervisor replied, we thanked")
+        _mail(s, talked, "out", datetime(2026, 8, 26), "a")
+        _mail(s, talked, "in", datetime(2026, 9, 29), "a")
+        _mail(s, talked, "out", datetime(2026, 9, 29, 12), "a")
+        followed = _pos(s, title="one follow-up not in the tracker")
+        _mail(s, followed, "out", datetime(2026, 9, 29), "b")
+        _mail(s, followed, "out", datetime(2026, 10, 13), "b")
+        done = _pos(s, title="two follow-ups in the thread")
+        for d in (datetime(2026, 8, 1), datetime(2026, 8, 20), datetime(2026, 9, 10)):
+            _mail(s, done, "out", d, "c")
+        due = {d.position.title: d.number for d in reminders_due(s, today)}
+        assert due == {"one follow-up not in the tracker": 2}

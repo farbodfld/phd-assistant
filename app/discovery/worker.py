@@ -17,6 +17,8 @@ from app.discovery.pipeline import run_jobsac
 from app.gmail.client import GmailClient
 from app.llm.client import LLMClient
 from app.mail.inbox import check_inbox, retry_unprocessed
+from app.outreach.gmail_sync import push_drafts, sync_drafts
+from app.outreach.run import run_outreach
 from app.rules.engine import run_checks
 from app.scheduler import run_forever
 
@@ -82,6 +84,42 @@ def daily_discovery():
             discover(scheduled=True, source=source)
         except Exception:
             logging.exception("%s discovery failed", source)
+    try:
+        outreach()                      # right after discovery: new positions get their first email drafts
+    except Exception:
+        logging.exception("outreach failed")
+
+
+def outreach(today: date | None = None, limit: int | None = None):
+    """Phase 5 daily step: reminders and first emails as drafts (and Gmail drafts until phase 6)."""
+    settings = get_settings()
+    today = today or datetime.now(ZoneInfo(settings.timezone)).date()
+    with session_scope() as s:
+        run = Run(kind="outreach")
+        s.add(run)
+        s.commit()
+        run_id = run.id
+    gmail = None
+    gmail_error = None
+    if settings.gmail_drafts:
+        try:
+            gmail = GmailClient()
+        except Exception as exc:              # drafts are still written to the database
+            gmail_error = f"Gmail: {type(exc).__name__}: {exc}"
+    fetcher = HttpFetcher()
+    try:
+        with session_scope() as s:
+            report = run_outreach(s, LLMClient(run_id=run_id), today, gmail=gmail, fetcher=fetcher, limit=limit)
+            if gmail_error:
+                report.errors.insert(0, gmail_error)
+    finally:
+        fetcher.close()
+    with session_scope() as s:
+        run = s.get(Run, run_id)
+        run.ok, run.finished_at = not report.errors, datetime.now(timezone.utc)
+        run.report = asdict(report)
+    logging.info("%s", report.summary())
+    return report
 
 
 def inbox_check(now: datetime | None = None):
@@ -108,6 +146,12 @@ def inbox_check(now: datetime | None = None):
                 errors.append(f"retry: {type(exc).__name__}: {exc}")
             if report.stored or retried:
                 run_checks(s, today)
+            if settings.gmail_drafts:
+                try:                              # reply drafts reach Gmail Drafts; sent ones are recorded
+                    sync_drafts(s, gmail, today)
+                    push_drafts(s, gmail)
+                except Exception as exc:
+                    errors.append(f"Gmail drafts: {type(exc).__name__}: {exc}")
     except Exception as exc:
         with session_scope() as s:
             run = s.get(Run, run_id)

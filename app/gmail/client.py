@@ -109,11 +109,11 @@ class GmailClient:
     def get(self, msg_id: str) -> dict:
         return self._exec(self._svc.users().messages().get(userId="me", id=msg_id, format="full"))
 
-    def send(self, to: str, subject: str, body: str, *, thread_id: str | None = None,
-             in_reply_to: str | None = None, attachments: list[Path] = ()) -> str:
-        """Used only after Farbod approves in Telegram (phase 6)."""
+    @staticmethod
+    def _mime(me: str, to: str, subject: str, body: str, in_reply_to: str | None,
+              attachments: list[Path]) -> dict:
         msg = MimeMessage()
-        msg["To"], msg["From"], msg["Subject"] = to, self.me, subject
+        msg["To"], msg["From"], msg["Subject"] = to, me, subject
         if in_reply_to:
             msg["In-Reply-To"] = msg["References"] = in_reply_to
         msg.set_content(body)
@@ -121,8 +121,49 @@ class GmailClient:
             path = Path(path)
             maintype, subtype = ("application", "pdf") if path.suffix.lower() == ".pdf" else ("application", "octet-stream")
             msg.add_attachment(path.read_bytes(), maintype=maintype, subtype=subtype, filename=path.name)
-        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-        payload = {"raw": raw}
+        return {"raw": base64.urlsafe_b64encode(msg.as_bytes()).decode()}
+
+    def send(self, to: str, subject: str, body: str, *, thread_id: str | None = None,
+             in_reply_to: str | None = None, attachments: list[Path] = ()) -> str:
+        """Used only after Farbod approves in Telegram (phase 6)."""
+        payload = self._mime(self.me, to, subject, body, in_reply_to, attachments)
         if thread_id:
             payload["threadId"] = thread_id
         return self._exec(self._svc.users().messages().send(userId="me", body=payload))["id"]
+
+    def create_draft(self, to: str, subject: str, body: str, *, thread_id: str | None = None,
+                     in_reply_to: str | None = None, attachments: list[Path] = ()) -> dict:
+        """A Gmail draft Farbod reviews and sends himself. -> {"draft": id, "message": id, "thread": id}"""
+        message = self._mime(self.me, to, subject, body, in_reply_to, attachments)
+        if thread_id:
+            message["threadId"] = thread_id
+        resp = self._exec(self._svc.users().drafts().create(userId="me", body={"message": message}))
+        return {"draft": resp["id"], "message": resp["message"]["id"], "thread": resp["message"].get("threadId")}
+
+    def send_draft(self, draft_id: str) -> str:
+        """Send a Gmail draft exactly as it is now (with any edits Farbod made in Gmail). -> message id"""
+        return self._exec(self._svc.users().drafts().send(userId="me", body={"id": draft_id}))["id"]
+
+    def draft_exists(self, draft_id: str) -> bool:
+        from googleapiclient.errors import HttpError
+        try:
+            self._exec(self._svc.users().drafts().get(userId="me", id=draft_id, format="minimal"))
+            return True
+        except HttpError as exc:
+            if getattr(exc, "status_code", None) == 404 or getattr(getattr(exc, "resp", None), "status", None) == 404:
+                return False
+            raise
+
+    def sent_in_thread(self, thread_id: str, after_ms: int) -> str | None:
+        """Id of a message Farbod sent in this thread after `after_ms` (epoch milliseconds), if any."""
+        from googleapiclient.errors import HttpError
+        try:
+            thread = self._exec(self._svc.users().threads().get(userId="me", id=thread_id, format="minimal"))
+        except HttpError as exc:
+            if getattr(getattr(exc, "resp", None), "status", None) == 404:
+                return None
+            raise
+        for m in thread.get("messages", []):
+            if "SENT" in m.get("labelIds", []) and int(m.get("internalDate", 0)) >= after_ms:
+                return m["id"]
+        return None

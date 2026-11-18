@@ -81,8 +81,9 @@ def test_daily_discovery_runs_second_source_after_first_raises(monkeypatch):
             raise RuntimeError("first source failed")
 
     monkeypatch.setattr(worker, "discover", run)
+    monkeypatch.setattr(worker, "outreach", lambda: calls.append("outreach"))
     worker.daily_discovery()
-    assert calls == ["jobsac", "findaphd"]
+    assert calls == ["jobsac", "findaphd", "outreach"]
 
 
 def test_both_scheduled_reports_are_saved_separately(db, tmp_path, monkeypatch):
@@ -93,6 +94,7 @@ def test_both_scheduled_reports_are_saved_separately(db, tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "HttpFetcher", lambda: jobs)
     monkeypatch.setattr(worker, "FindAPhDBrowser", lambda: find)
     monkeypatch.setattr(worker, "LLMClient", lambda **kwargs: FakeLLM({}))
+    monkeypatch.setattr(worker, "outreach", lambda: None)
     worker.daily_discovery()
     worker.daily_discovery()
     assert jobs.calls == [JOBSAC.page_url(1)] and find.calls == [FIRST]

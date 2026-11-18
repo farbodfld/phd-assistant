@@ -31,8 +31,8 @@ def reminders_due(s: Session, today: date, wait_days: int = WAIT_DAYS) -> list[D
                                .order_by(EmailMessage.sent_at)))
         outs = [m for m in mails if m.direction == "out"]
         ins = [m for m in mails if m.direction == "in" and m.category != "auto_reply"]
-        if outs and ins and ins[-1].sent_at > outs[-1].sent_at:
-            continue                                   # they replied after our last email
+        if ins:
+            continue                                   # they have replied: reminders are only for silence
         if outs:
             last = outs[-1].sent_at.date()
         else:
@@ -42,8 +42,12 @@ def reminders_due(s: Session, today: date, wait_days: int = WAIT_DAYS) -> list[D
             last = max(dates)
         if (today - last).days < wait_days:
             continue
-        number = 2 if p.reminder_1 else 1
         thread = outs[-1].thread_id if outs else None
+        # Our earlier follow-ups in the same thread count as reminders even when the tracker missed them.
+        in_thread = sum(1 for m in outs if m.thread_id == thread) if thread else 0
+        number = max(2 if p.reminder_1 else 1, in_thread)
+        if number > 2:
+            continue                                   # two reminders already in the thread: stop
         to = outs[-1].recipients.split(",")[0].strip() if outs and outs[-1].recipients else None
         out.append(DueReminder(p, number, last, thread, to))
     return sorted(out, key=lambda d: (d.position.deadline_date or date.max, -(d.position.score or 0)))

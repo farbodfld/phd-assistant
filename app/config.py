@@ -19,6 +19,13 @@ class Settings(BaseSettings):
 
     # Where position folders (CV, statements, proposals...) live.
     positions_dir: Path = ROOT / "data" / "positions"
+    # Master documents: the one CV (profile.yaml documents.master_cv), transcripts and certificates.
+    documents_dir: Path = ROOT / "data" / "documents"
+
+    # Phase 5: every email is a draft. Until the Telegram bot (phase 6) exists, drafts are also
+    # created in Gmail Drafts so Farbod can read, edit and send them himself.
+    gmail_drafts: bool = True
+    outreach_daily_limit: int = 0          # 0 = no limit (the daily LLM budget still applies)
 
     # Claude API
     anthropic_api_key: str = ""

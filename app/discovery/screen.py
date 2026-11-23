@@ -67,7 +67,8 @@ to false only for wet lab, fieldwork, pure mathematics or theory with no coding,
 does not have is stated as essential. When in doubt, set it to true. Give the three score parts (computing_share, skills_fit, topic_proximity);
 the total is added up for you.
 apply_method: "Email + Portal" when a named supervisor invites informal enquiries before applying, "Portal" when only
-an application system is given, "Email" when applications go by email.
+an application system is given or the advert does not invite contacting the supervisor, "Email" when applications go
+by email to the supervisor.
 Never invent names, emails, deadlines or requirements. In every English field use commas or periods, never a dash as
 a sentence connector."""
 

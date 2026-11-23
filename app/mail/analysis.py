@@ -38,7 +38,11 @@ ANALYSE_INSTRUCTIONS = """You handle Farbod's PhD-search email. Analyse the NEW 
   (funding rules, "apply via the portal only", "read X first", deadlines, eligibility). Pick the widest scope
   that is clearly true. Do not repeat what the earlier thread already said.
 - close_position: true only for a clear rejection, or when they ask him not to apply.
-- new_apply_method: set only when the email changes how to apply (e.g. "no individual discussions" -> Portal).
+- new_apply_method: set only when the email changes how to apply (e.g. "no individual discussions" -> Portal,
+  "please apply through the online system" -> Portal or "Email + Portal").
+- When the supervisor tells him to apply through the portal or the university's application system, that is a
+  reply: set needs_reply and write a short, warm thank-you saying he will submit the formal application through
+  the portal (and by when, if a deadline is known). No re-pitch.
 - user_tasks: concrete actions only Farbod can take (try software, read papers, log in, pay, submit).
 - needs_reply / reply_body: reply when politeness or the conversation requires it (questions, positive
   replies, document requests, rejections deserve a short thank-you that may ask about other funded positions).

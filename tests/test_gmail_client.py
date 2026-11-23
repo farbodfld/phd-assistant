@@ -53,3 +53,31 @@ def test_does_not_retry_permission_errors():
     g = GmailClient(Svc([_err(403, "insufficientPermissions")]), sleep=lambda d: None)
     with pytest.raises(HttpError):
         g.get("x")
+
+
+def test_a_stale_connection_is_dropped_and_the_call_retried():
+    import ssl
+    from app.gmail.client import GmailClient
+
+    class Conn:
+        closed = False
+
+        def close(self):
+            Conn.closed = True
+
+    class Inner:
+        connections = {"https:gmail.googleapis.com": Conn()}
+
+    class Req:
+        http = type("Authorized", (), {"http": Inner()})()
+        calls = 0
+
+        def execute(self):
+            Req.calls += 1
+            if Req.calls == 1:
+                raise ssl.SSLError("[SYS] unknown error")
+            return {"id": "ok"}
+
+    g = GmailClient.__new__(GmailClient)
+    g._sleep, g._last = (lambda *_: None), 0.0
+    assert g._exec(Req()) == {"id": "ok"} and Conn.closed and Inner.connections == {}

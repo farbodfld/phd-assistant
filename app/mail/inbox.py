@@ -172,6 +172,8 @@ def apply_analysis(s: Session, row: EmailMessage, e: ParsedEmail, p: Position | 
         lines.append("🔒 این موقعیت بسته شد.")
     if a.new_apply_method:
         lines.append(f"↪️ روش اپلای تغییر کرد به {a.new_apply_method}.")
+        if "Portal" in a.new_apply_method:
+            lines.append("🗂 به لیست پورتال‌ها اضافه شد.")
     lines += [f"✅ کار برای شما: {t}" for t in a.user_tasks]
     if draft:
         lines.append("✍️ پیش‌نویس جواب آماده است.")
@@ -180,11 +182,17 @@ def apply_analysis(s: Session, row: EmailMessage, e: ParsedEmail, p: Position | 
     return draft
 
 
-def check_inbox(s: Session, gmail, llm, now: datetime | None = None, lookback_days: int = 2) -> InboxReport:
+def check_inbox(s: Session, gmail, llm, now: datetime | None = None, lookback_days: int | None = None) -> InboxReport:
     now = now or datetime.now()
     r = InboxReport()
     meta = s.get(Meta, LAST_CHECK)
-    since = datetime.fromisoformat(meta.value) if meta else now - timedelta(days=lookback_days)
+    if lookback_days is None:
+        from app.config import get_settings
+        lookback_days = get_settings().inbox_lookback_days
+    window = now - timedelta(days=lookback_days)
+    # Always re-read at least the last few days (a late-arriving or mislabelled reply is not missed);
+    # messages already stored are skipped by gmail_id, so this costs no LLM calls.
+    since = min(datetime.fromisoformat(meta.value), window) if meta else window
     since -= timedelta(minutes=10)                      # overlap; duplicates are skipped by gmail_id
     ids = gmail.search(f"after:{int(since.timestamp())} -in:drafts -in:chats")
     for mid in ids:

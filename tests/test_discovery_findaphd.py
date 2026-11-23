@@ -226,3 +226,44 @@ def test_low_score_is_not_tracked(db, tmp_path):
         rep = run_findaphd(s, fetcher, FakeLLM({"score_position": [_v(score=30)]}), tmp_path, TODAY)
         assert (rep.added, rep.low_fit) == (0, 1) and not s.scalars(select(Position)).all()
         assert s.get(Meta, "findaphd:123").value.startswith("low fit")
+
+
+def test_screened_adverts_are_only_checked_on_the_list_not_downloaded(db, tmp_path):
+    fetcher = Pages({FIRST: LIST, URL: AD})
+    llm = FakeLLM({"score_position": [_v()]})
+    with session_scope() as s:
+        run_findaphd(s, fetcher, llm, tmp_path, TODAY)
+        (tmp_path / "findaphd_project_123.html").unlink()            # even without the saved copy
+        again = run_findaphd(s, fetcher, llm, tmp_path, TODAY)
+        assert fetcher.calls.count(URL) == 1 and again.known == 1 and again.archived == 0
+
+
+def test_deadline_change_on_the_list_card_updates_the_row(db, tmp_path):
+    card_list = ('<div id="SearchResults"><div class="resultsRow phd-result"><a href="' + URL + '">Robots'
+                 '<span class="icon-text"><i class="fa-calendar"></i> 20 February 2027</span></a></div></div>')
+    with session_scope() as s:
+        p = Position(source="findaphd", title="Robots", link=URL, deadline_date=date(2027, 1, 10))
+        s.add(p)
+        s.commit()
+        rep = run_findaphd(s, Pages({FIRST: card_list}), FakeLLM({}), tmp_path, TODAY)
+        assert p.deadline_date == date(2027, 2, 20) and rep.deadline_updates == 1
+
+
+def test_rows_missing_from_the_list_are_confirmed_before_closing(db, tmp_path):
+    gone_url = FINDAPHD.base + "/phds/project/gone/?p9"
+    busy_url = FINDAPHD.base + "/phds/project/busy/?p8"
+    live_url = FINDAPHD.base + "/phds/project/elsewhere/?p7"
+    removed = '<html><body>This project is no longer listed on FindAPhD.com</body></html>'
+    fetcher = Pages({FIRST: LIST, URL: AD, gone_url: removed, busy_url: removed, live_url: AD})
+    with session_scope() as s:
+        gone = Position(source="findaphd", title="Gone", link=gone_url)
+        busy = Position(source="findaphd", title="Busy", link=busy_url, email_done=True)
+        live = Position(source="findaphd", title="Other filter", link=live_url)
+        s.add_all([gone, busy, live])
+        s.commit()
+        rep = run_findaphd(s, fetcher, FakeLLM({"score_position": [_v()]}), tmp_path, TODAY)
+        assert gone.closed and "REMOVED from FindAPhD" in gone.status
+        assert not busy.closed and "kept active" in busy.status
+        assert not live.closed and rep.removed == ["Gone"] and rep.removed_active == ["Busy"]
+        run_findaphd(s, fetcher, FakeLLM({}), tmp_path, TODAY)
+        assert fetcher.calls.count(busy_url) == 1                     # not checked again

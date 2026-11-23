@@ -31,7 +31,7 @@ def _open_reminder(s: Session, position_id: int) -> bool:
 
 def draft_reminder(s: Session, d: DueReminder, llm, today: date) -> Draft | None:
     p = d.position
-    if _open_reminder(s, p.id):
+    if _open_reminder(s, p.id) or s.get(Meta, f"reminder-denied:{p.id}:{d.number}"):
         return None
     if not d.thread_id or not d.to:
         key = f"reminder-nothread:{p.id}:{d.number}"

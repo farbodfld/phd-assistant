@@ -72,6 +72,15 @@ class LLMClient:
                           output_tokens=out, cache_read_tokens=cr, cache_write_tokens=cw, cost_usd=cost))
         return cost
 
+    def converse(self, task: str, messages: list[dict], *, system: list[dict] | str, tools: list[dict]):
+        """One turn of a tool-using conversation (the Telegram assistant). -> the raw response."""
+        self._guard()
+        model, max_tokens = model_for(task)
+        resp = self._sdk.messages.create(model=model, max_tokens=max_tokens, system=system, tools=tools,
+                                         messages=messages)
+        self._record(task, model, resp.usage)
+        return resp
+
     def complete(self, task: str, prompt: str | list[dict], *, context: list[str] = (),
                  instructions: str | None = None, output: type[T] | None = None) -> str | T:
         self._guard()

@@ -13,6 +13,7 @@ SOPS = ROOT / "sops"
 TASK_SOPS: dict[str, list[str]] = {
     "initial_email": ["10_outreach_emails", "40_funding_and_eligibility"],
     "reminder_email": ["20_reminders"],
+    "edit_email": ["10_outreach_emails", "20_reminders", "25_replies"],
     "reply_to_supervisor": ["25_replies", "10_outreach_emails"],
     "extract_insights": ["25_replies", "40_funding_and_eligibility"],
     "classify_email": ["25_replies"],
@@ -28,7 +29,7 @@ TASK_SOPS: dict[str, list[str]] = {
     "chat": ["70_approvals_and_notifications", "60_tracker"],
     "chat_simple": ["60_tracker"],
 }
-NEEDS_PROFILE = {"analyse_email", "initial_email", "reminder_email", "reply_to_supervisor", "personal_statement",
+NEEDS_PROFILE = {"analyse_email", "initial_email", "edit_email", "reminder_email", "reply_to_supervisor", "personal_statement",
                  "research_proposal", "score_position", "portal_step", "chat"}
 
 

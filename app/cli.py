@@ -62,12 +62,26 @@ def main(argv=None):
     ds = sub.add_parser("draft-show", help="print one draft in full")
     ds.add_argument("draft_id", type=int)
     sub.add_parser("sync-drafts", help="push pending drafts to Gmail and record the ones you sent")
+    idr = sub.add_parser("import-drafts", help="add first-email drafts written in a session with Claude (no model cost)")
+    idr.add_argument("file", type=Path)
     sd = sub.add_parser("send-drafts", help="send drafts you have reviewed (their Gmail drafts, with your edits)")
     sd.add_argument("ids", type=int, nargs="*", help="draft numbers from `phd drafts`")
     sd.add_argument("--all", action="store_true", help="every pending draft")
     sd.add_argument("--except", dest="skip", type=int, nargs="*", default=[], help="draft numbers to leave out")
+    cp = sub.add_parser("copy-db", help="copy all data from another database into DATABASE_URL (for deployment)")
+    cp.add_argument("source", help="e.g. sqlite:////data/phd.db")
+    cp.add_argument("--force", action="store_true", help="replace data already in the target")
+    sub.add_parser("bot", help="run only the Telegram bot (Approve / Edit / Deny drafts)")
+    sub.add_parser("telegram-test", help="send a test message to your Telegram")
     sub.add_parser("serve", help="run daily discovery on jobs.ac.uk and FindAPhD")
     args = ap.parse_args(argv)
+
+    if args.cmd == "copy-db":
+        from app.config import get_settings
+        from app.ops.copy_db import copy_database
+        for table, n in copy_database(args.source, get_settings().database_url, args.force).items():
+            print(f"{table:20} {n}")
+        return
 
     if args.cmd == "probe-findaphd":
         from app.discovery.findaphd_browser import FindAPhDBrowser
@@ -268,6 +282,19 @@ def main(argv=None):
             if r["missing"]:
                 print(f"not sent (no Gmail draft, you may have deleted it): {r['missing']}")
             print(f"recorded on the tracker: {len(r['recorded'])}")
+    elif args.cmd == "import-drafts":
+        from app.outreach.importer import import_drafts, load
+        with session_scope() as s:
+            r = import_drafts(s, load(args.file), date.today())
+            print(f"created drafts: {r.created}")
+            for line in r.skipped:
+                print("skipped:", line)
+            try:
+                from app.gmail.client import GmailClient
+                from app.outreach.gmail_sync import push_drafts
+                print(f"Gmail drafts created: {push_drafts(s, GmailClient())}")
+            except Exception as exc:
+                print(f"Gmail drafts not created now ({type(exc).__name__}); the next run will do it")
     elif args.cmd == "sync-drafts":
         from app.gmail.client import GmailClient
         from app.outreach.gmail_sync import push_drafts, sync_drafts
@@ -276,6 +303,23 @@ def main(argv=None):
             done = sync_drafts(s, gmail, date.today())
             print(f"sent: {len(done['sent'])}, deleted: {len(done['deleted'])}, "
                   f"new Gmail drafts: {push_drafts(s, gmail)}")
+    elif args.cmd in ("bot", "telegram-test"):
+        import logging
+        from app.telegram.bot import make_bot
+        bot = make_bot()
+        if bot is None:
+            raise SystemExit("set TELEGRAM_BOT_TOKEN in .env first (from @BotFather)")
+        if args.cmd == "telegram-test":
+            if not bot.owner:
+                raise SystemExit("TELEGRAM_OWNER_ID is not set: run `phd bot`, send /start to your bot, "
+                                 "and put the number it replies with in .env")
+            bot.say("✅ PhD Assistant: پیام آزمایشی. ربات کار می‌کنه.")
+            print("sent")
+        else:
+            logging.basicConfig(level=logging.INFO)
+            logging.getLogger("httpx").setLevel(logging.WARNING)      # its request log prints the bot token
+            print("Telegram bot running. Ctrl+C to stop.")
+            bot.run_forever()
     elif args.cmd == "serve":
         from app.discovery.worker import serve
         serve()

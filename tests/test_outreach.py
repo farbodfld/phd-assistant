@@ -211,6 +211,10 @@ def test_generic_addresses_and_semicolon_names():
     from app.outreach.recipients import is_generic
     assert is_generic("nw-dmsrecruitment@liverpool.ac.uk") and is_generic("pgr-admissions@leeds.ac.uk")
     assert not is_generic("p.muhle-karbe@bham.ac.uk") and not is_generic("j.smith@leeds.ac.uk")
+    for office in ("made4manufacturing@sheffield.ac.uk", "aerosol-science@bristol.ac.uk", "bbsrcdtp@liverpool.ac.uk",
+                   "boldexec-team@eng.ox.ac.uk", "irisk@mailbox.lboro.ac.uk"):
+        assert is_generic(office), office
+    assert not is_generic("mjw@ecs.soton.ac.uk") and not is_generic("l.zhang.16@bham.ac.uk")
     p = Position(title="x", supervisor_contact="Dr A Jones ; Dr B Lee (a.jones@leeds.ac.uk)")
     assert recipient(p) == ("Dr A Jones", "a.jones@leeds.ac.uk")
 
@@ -290,3 +294,57 @@ def test_send_continues_past_a_draft_already_sent_from_gmail(db, folders):
         r = send_approved(s, gmail, [d1.id, d2.id], TODAY)
         assert r["sent"] == [d2.id] and sorted(r["recorded"]) == [d1.id, d2.id]
         assert p1.email_done and p2.email_done
+
+
+def test_generic_inbox_is_never_pitched(db, folders):
+    from app.db.models import UserTask
+    with session_scope() as s:
+        p = _pos(s, supervisor_contact="apply to nw-dmsrecruitment@liverpool.ac.uk")
+        llm = FakeLLM({})
+        assert draft_initial(s, p, llm, TODAY) is None and llm.calls == []          # no model call, no email
+        assert "آدرس عمومی" in s.scalars(select(UserTask.text)).one() and not needs_initial(s, TODAY)
+
+
+def test_model_refusal_for_a_first_email_is_recorded_once(db, folders):
+    from app.db.models import UserTask
+    from app.llm.client import LLMRefused
+
+    class Refusing(FakeLLM):
+        def complete(self, task, prompt, **kw):
+            self.calls.append(task)
+            raise LLMRefused("initial_email: declined")
+
+    with session_scope() as s:
+        p = _pos(s)
+        s.commit()
+        r = run_outreach(s, Refusing({}), TODAY)
+        assert r.refused == 1 and not r.errors and s.scalars(select(UserTask)).one()
+        llm = Refusing({})
+        run_outreach(s, llm, TODAY)
+        assert llm.calls == []                                   # not asked again tomorrow
+
+
+def test_transcripts_attached_when_the_advert_asks(db, folders):
+    for name in ("MSc_HEAR_Transcript_under2MB.pdf", "BSc Transcript.pdf"):
+        (folders / "documents" / name).write_bytes(b"%PDF")
+    with session_scope() as s:
+        p = _pos(s)
+        llm = FakeLLM({"initial_email": [_email(needs_transcripts=True)]})
+        d = draft_initial(s, p, llm, TODAY)
+        assert [Path(a).name for a in d.attachments] == ["Farbod_Fooladi_CV.pdf", "MSc_HEAR_Transcript_under2MB.pdf",
+                                                        "BSc Transcript.pdf"]
+        assert "Will be attached: CV, MSc and BSc transcripts" in llm.calls[0][1] and not d.issues
+
+
+def test_an_email_never_claims_an_attachment_that_is_missing(db, folders):
+    """Regression (20 Nov, UCL Worms on a Chip): the email said transcripts were attached; they were not."""
+    body = ("Dear Dr Bolognesi,\n\nAs requested in the advert, I have attached my CV, my degree transcripts and a "
+            "motivation letter.\n\nBest regards,\nFarbod Fooladi")
+    with session_scope() as s:
+        p = _pos(s)
+        llm = FakeLLM({"initial_email": [_email(body=body, needs_transcripts=True)]})
+        d = draft_initial(s, p, llm, TODAY)
+        assert "Transcripts are NOT available" in llm.calls[0][1]
+        assert any(i.startswith("missing transcripts") for i in d.issues)
+        assert any("transcript is attached" in i for i in d.issues)
+        assert any("statement is attached" in i for i in d.issues)

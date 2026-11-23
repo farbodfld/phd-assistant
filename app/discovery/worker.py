@@ -9,7 +9,9 @@ from filelock import FileLock, Timeout
 
 from app.config import get_settings
 from app.db.base import session_scope
-from app.db.models import Meta, Notification, Run
+from sqlalchemy import func, select
+
+from app.db.models import Draft, Meta, Notification, Run
 from app.discovery.fetch import HttpFetcher
 from app.discovery.findaphd_browser import FindAPhDBrowser
 from app.discovery.findaphd import run_findaphd
@@ -119,6 +121,7 @@ def outreach(today: date | None = None, limit: int | None = None):
         run.ok, run.finished_at = not report.errors, datetime.now(timezone.utc)
         run.report = asdict(report)
     logging.info("%s", report.summary())
+    _say("review", "")                       # the bot now offers the drafts, category by category
     return report
 
 
@@ -168,16 +171,101 @@ def inbox_check(now: datetime | None = None):
     return report
 
 
-def _discovery_loop(settings):
-    # Catch today's missed run after a restart.
-    if datetime.now(ZoneInfo(settings.timezone)).time() >= time.fromisoformat(settings.daily_run_time):
-        daily_discovery()
-    run_forever({"discovery": ([settings.daily_run_time], daily_discovery)}, settings.timezone)
+# ---------------------------------------------------------------------- the day, step by step
+# 08:00: inbox -> both sites -> outreach -> review in Telegram (replies, new emails, reminders).
+# 14:00, 17:00, 20:00: inbox only. One step at a time, each announced in Telegram, never interleaved.
+
+def _say(kind: str, text: str):
+    """A line for Telegram. kind 'stage' marks the start or end of a step; 'review' opens the review."""
+    with session_scope() as s:
+        s.add(Notification(kind=kind, ref_type="pipeline", text=text))
+
+
+def _last_notification_id() -> int:
+    with session_scope() as s:
+        return s.scalar(select(func.max(Notification.id))) or 0
+
+
+def _inbox_summary(after_id: int, report) -> str:
+    """One message with what the supervisors wrote (collected from the inbox items, which the bot does not
+    send on their own)."""
+    with session_scope() as s:
+        items = list(s.scalars(select(Notification).where(Notification.id > after_id, Notification.kind == "email")
+                               .order_by(Notification.id)))
+        drafts = sum(1 for n in items if n.ref_type == "draft")
+        texts = [n.text for n in items]
+    if not texts:
+        return "📭 پیام جدیدی از استادها نیومده."
+    head = f"📧 {len(texts)} ایمیل جدید از استادها"
+    if drafts:
+        head += f"، برای {drafts} تاش جواب نوشته شد (بعداً تو بخش جواب‌ها نشونت میدم)"
+    return head + ":\n\n" + "\n\n".join(texts)
+
+
+def inbox_round():
+    settings = get_settings()
+    hhmm = datetime.now(ZoneInfo(settings.timezone)).strftime("%H:%M")
+    _say("stage", f"📥 {hhmm} | شروع بررسی inbox")
+    start = _last_notification_id()
+    try:
+        report = inbox_check()
+    except Exception as exc:
+        logging.exception("inbox check failed")
+        _say("stage", f"⚠️ بررسی inbox انجام نشد: {type(exc).__name__}")
+        return None
+    _say("report", _inbox_summary(start, report))
+    _say("stage", "✅ بررسی inbox تموم شد")
+    return report
+
+
+def morning():
+    """The whole morning run, in order. Drafts are not shown until everything is ready."""
+    settings = get_settings()
+    today = datetime.now(ZoneInfo(settings.timezone)).date()
+    inbox_round()
+    _say("stage", "🔎 شروع جستجوی پوزیشن‌های جدید: jobs.ac.uk و FindAPhD")
+    for source in ("jobsac", "findaphd"):
+        try:
+            discover(scheduled=True, source=source)
+        except Exception as exc:
+            logging.exception("%s discovery failed", source)
+            _say("stage", f"⚠️ جستجوی {source} انجام نشد: {type(exc).__name__}")
+    _say("stage", "✅ جستجوی دو سایت تموم شد")
+    _say("stage", "✉️ شروع آماده کردن ایمیل‌ها (جواب‌ها، ایمیل‌های جدید، یادآوری‌ها)")
+    try:
+        outreach()                       # ends with the review invitation
+    except Exception as exc:
+        logging.exception("outreach failed")
+        _say("stage", f"⚠️ آماده کردن ایمیل‌ها انجام نشد: {type(exc).__name__}")
+        _say("review", "")
+    with session_scope() as s:
+        s.merge(Meta(key="pipeline:morning", value=today.isoformat()))
+
+
+def afternoon():
+    """14:00, 17:00, 20:00: inbox only; offer the replies for review if any were drafted."""
+    inbox_round()
+    with session_scope() as s:
+        replies = s.scalar(select(func.count(Draft.id)).where(Draft.status == "pending", Draft.kind == "reply"))
+    if replies:
+        _say("review", "replies")               # straight to the replies written in this round
 
 
 def serve():
-    """Discovery runs in its own thread: a long FindAPhD sweep must not delay the inbox checks."""
+    """One schedule, one step at a time. The Telegram bot runs alongside it."""
     settings = get_settings()
     logging.basicConfig(level=logging.INFO)
-    threading.Thread(target=_discovery_loop, args=(settings,), name="discovery", daemon=True).start()
-    run_forever({"inbox": (settings.inbox_check_times, inbox_check)}, settings.timezone)
+    logging.getLogger("httpx").setLevel(logging.WARNING)          # its request log prints the bot token
+    from app.telegram.bot import make_bot
+    bot = make_bot()
+    if bot is not None:                       # phase 6: drafts wait for Approve in Telegram
+        threading.Thread(target=bot.run_forever, name="telegram", daemon=True).start()
+    else:
+        logging.warning("TELEGRAM_BOT_TOKEN not set: no Telegram bot (drafts stay in Gmail Drafts)")
+    now = datetime.now(ZoneInfo(settings.timezone))
+    with session_scope() as s:
+        done = s.get(Meta, "pipeline:morning")
+    if now.time() >= time.fromisoformat(settings.daily_run_time) and not (done and done.value == now.date().isoformat()):
+        morning()                             # catch up a missed morning after a restart
+    later = [t for t in settings.inbox_check_times if t != settings.daily_run_time]
+    run_forever({"morning": ([settings.daily_run_time], morning), "inbox": (later, afternoon)}, settings.timezone)

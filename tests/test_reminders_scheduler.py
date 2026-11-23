@@ -44,9 +44,13 @@ def test_reminders(db):
         done = _pos(s, title="two sent", reminder_1="2026-10-01", reminder_2="2026-10-15")
         tracker_only = _pos(s, title="tracker date only", email_sent="2026-11-01")
         due = {d.position.title: d for d in reminders_due(s, today)}
-        assert set(due) == {"no reply 28 days", "second"}
+        four = _pos(s, title="four sent", reminder_1="2026-09-01", reminder_2="2026-09-15",
+                    reminder_3="2026-09-29", reminder_4="2026-10-13")
+        due = {d.position.title: d for d in reminders_due(s, today)}
+        assert set(due) == {"no reply 28 days", "second", "two sent"}
         assert due["no reply 28 days"].number == 1 and due["no reply 28 days"].thread_id == "t1"
         assert due["second"].number == 2 and due["second"].thread_id is None
+        assert due["two sent"].number == 3
 
 
 def test_no_reminder_after_any_reply_and_thread_follow_ups_count(db):
@@ -64,5 +68,11 @@ def test_no_reminder_after_any_reply_and_thread_follow_ups_count(db):
         done = _pos(s, title="two follow-ups in the thread")
         for d in (datetime(2026, 8, 1), datetime(2026, 8, 20), datetime(2026, 9, 10)):
             _mail(s, done, "out", d, "c")
+        stopped = _pos(s, title="four follow-ups in the thread")
+        for d in (datetime(2026, 7, 1), datetime(2026, 7, 15), datetime(2026, 8, 1),
+                  datetime(2026, 8, 15), datetime(2026, 9, 1)):
+            _mail(s, stopped, "out", d, "e")
         due = {d.position.title: d.number for d in reminders_due(s, today)}
-        assert due == {"one follow-up not in the tracker": 2}
+        assert due == {"one follow-up not in the tracker": 2, "two follow-ups in the thread": 3}
+        assert reminders_due(s, today, max_reminders=2) and \
+            {d.position.title for d in reminders_due(s, today, max_reminders=2)} == {"one follow-up not in the tracker"}

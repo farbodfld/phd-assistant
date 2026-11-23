@@ -31,11 +31,12 @@ ROUTES: dict[str, Route] = {
     "extract_insights": Route("strong", 1200),
     "initial_email": Route("strong", 1200),
     "reminder_email": Route("strong", 500),
+    "edit_email": Route("strong", 1500),          # Farbod's edit instruction from Telegram
     "personal_statement": Route("strong", 4000),
     "research_proposal": Route("strong", 6000),
     "risk_check": Route("strong", 1200),
     "portal_step": Route("strong", 2000),
-    "chat": Route("strong", 2000),
+    "chat": Route("strong", 2000),               # Farbod's conversation with the assistant in Telegram
 }
 
 

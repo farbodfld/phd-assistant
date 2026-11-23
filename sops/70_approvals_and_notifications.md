@@ -16,9 +16,10 @@ Flag actions:
 Every daily report ends with "Not checked today" listing anything skipped and why.
 
 ## Schedule (Europe/London)
-- Inbox check at 08:00, 14:00, 17:00 and 20:00. If there is new PhD-related email, process it
-  fully in the same run (classify, insights, tracker update, draft reply, notify Farbod).
-- Daily run at 09:00: site sweep, then reminder and first email drafts (with the statement or proposal
-  when the advert asks for one), portal preparation, daily report.
-- Until the Telegram bot exists, every draft is also created in Gmail Drafts. Farbod reads, edits and
-  sends it himself; the next check sees it in Sent and records it on the tracker row.
+- 08:00, one step at a time, each announced in Telegram: inbox check (supervisor emails analysed, replies
+  drafted but not shown yet, then one inbox summary), both sites searched, outreach drafts prepared,
+  then the review: 1) replies to supervisors, 2) new first emails, 3) reminders, 4) portals (phase 8).
+- 14:00, 17:00, 20:00: inbox check only, with its summary ("no new email" when there is none); if a
+  reply was drafted, the review offers it.
+- Every draft is also created in Gmail Drafts. Approve in Telegram sends it; Farbod may also send it
+  from Gmail himself. Either way the row is updated. Deny is final.

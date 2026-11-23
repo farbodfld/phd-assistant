@@ -87,6 +87,24 @@ def cv_for(s: Session, p: Position) -> Path | None:
     return dest
 
 
+def transcripts() -> list[Path]:
+    """MSc and BSc transcripts from the master documents folder (names in profile.yaml); [] if missing."""
+    docs = load_profile()["documents"]
+    paths = [Path(get_settings().documents_dir) / docs[k] for k in ("msc_transcript", "bsc_transcript") if docs.get(k)]
+    return paths if paths and all(p.exists() for p in paths) else []
+
+
+def transcripts_for(s: Session, p: Position) -> list[Path]:
+    out = []
+    for src in transcripts():
+        dest = folder_for(p) / src.name
+        if not dest.exists():
+            shutil.copy2(src, dest)
+            _record(s, p, dest, "transcript")
+        out.append(dest)
+    return out
+
+
 def ai_writing_banned(p: Position) -> bool:
     return any(i.get("ai_writing") == "banned" for i in institutions_for(f"{p.university} {p.title}"))
 

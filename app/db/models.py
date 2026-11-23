@@ -37,6 +37,8 @@ class Position(Base):
     email_sent: Mapped[str | None] = mapped_column(String(32))
     reminder_1: Mapped[str | None] = mapped_column(String(32))
     reminder_2: Mapped[str | None] = mapped_column(String(32))
+    reminder_3: Mapped[str | None] = mapped_column(String(32))   # not in the tracker sheet
+    reminder_4: Mapped[str | None] = mapped_column(String(32))
     portal_submitted: Mapped[str | None] = mapped_column(String(32))
 
     status: Mapped[str | None] = mapped_column(Text)      # "Status / Next Action", newest first, " | " separated

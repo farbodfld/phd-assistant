@@ -184,3 +184,52 @@ phd write-statement 42          # statement for one position (Word and PDF)
 phd write-proposal 42           # proposal for one position
 phd sync-drafts                 # push to Gmail Drafts and record what you sent
 ```
+
+## Phase 6: Telegram approval and deployment
+
+Drafts are reviewed in stages, in this order: replies to supervisors, reminders, new first emails
+(portals follow in phase 8). The bot first asks to start; each stage then shows its drafts numbered
+("3 of 14 · draft #27") with **Approve** (sends it, the Gmail draft as it is now or directly with its
+attachments), **Edit** (full new text starting with "Dear", or an instruction such as "make it
+shorter") and **Deny** (discarded for good; not drafted again by itself). The stage ends with
+"finished" and, from two drafts up, "Approve all" (asks once more). On "finished" the bot checks the
+database and Gmail; only when nothing is left does it offer the next stage. To talk about one draft,
+Reply to its message, or send its number (`#27`). Reports, tasks and email summaries arrive grouped
+in one digest. Persian lines are shaped right to left with English words isolated, and the English
+email sits in a quote block. Only `TELEGRAM_OWNER_ID` is answered. Commands: `/drafts`,
+`/show 27`, `/status`, `/tasks`, `/cancel`.
+
+### Set up the bot (once)
+
+1. In Telegram, talk to @BotFather, `/newbot`, and put the token in `.env` as
+   `TELEGRAM_BOT_TOKEN=...`.
+2. Run `phd bot`, send `/start` to your bot; it replies with your id. Put it in `.env` as
+   `TELEGRAM_OWNER_ID=...`, stop the bot (Ctrl+C) and run `phd telegram-test`.
+3. `phd bot` runs the bot alone; `phd serve` runs it together with discovery, outreach and
+   inbox checks. The first start does not replay old reports.
+
+### Deploy on Lightsail
+
+Use an x86 Ubuntu instance with at least 2 GB of memory, install Docker, and clone the repo.
+Next to `docker-compose.yml` put:
+
+- `.env` (model key, Telegram token and owner id, and `POSTGRES_PASSWORD`);
+- `secrets/` (Gmail OAuth files from your computer);
+- `documents/` (the master CV and transcripts);
+- `import/` with a copy of your local `data/phd.db`, `data/findaphd/` and `data/positions/`
+  (stop `phd serve` on your computer first).
+
+```sh
+docker compose build app
+docker compose up -d db
+docker compose run --rm --no-deps -v ./import:/import app phd copy-db sqlite:////import/phd.db
+docker compose run --rm --no-deps -v ./import:/import app sh -c \
+  'cp -r /import/findaphd/. /data/findaphd/ && cp -r /import/positions/. /data/positions/'
+docker compose run --rm --no-deps app phd probe-findaphd
+docker compose up -d
+docker compose logs -f app
+```
+
+Run only one copy of `phd serve` (or `phd bot`) at a time: two bots with the same token
+would fight over updates. After moving to the server, stop running them on your computer.
+

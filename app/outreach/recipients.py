@@ -9,7 +9,12 @@ GENERIC = re.compile(r"(^|[._-])(pgr|phd|admissions?|graduate|postgrad|research|
 
 
 def is_generic(email: str) -> bool:
-    return bool(GENERIC.search(email.split("@")[0]))
+    """Office or programme inboxes (pgr-admissions@, made4manufacturing@, bbsrcdtp@) rather than a person.
+    A person's address has a dot (j.smith@), or is short initials (mjw@)."""
+    local = email.split("@")[0].lower()
+    if GENERIC.search(local):
+        return True
+    return "." not in local and len(local) > 4 and not any(ch.isdigit() for ch in local[-2:])
 
 
 def recipient(p: Position, advert: str = "") -> tuple[str, str] | None:

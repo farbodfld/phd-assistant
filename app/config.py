@@ -39,7 +39,9 @@ class Settings(BaseSettings):
     # in its own thread, so a long site sweep never delays an inbox check.
     timezone: str = "Europe/London"
     inbox_check_times: list[str] = ["08:00", "14:00", "17:00", "20:00"]
-    daily_run_time: str = "09:00"           # site sweep, outreach and reminder drafts, report
+    inbox_lookback_days: int = 5            # every inbox check re-reads at least this many days back
+    max_reminders: int = 4                  # reminders per position; after the last one, stop
+    daily_run_time: str = "08:00"           # morning run: inbox, then both sites, then outreach and review
     findaphd_archive_dir: Path = ROOT / "data" / "findaphd"
     findaphd_page_wait_seconds: PositiveInt = 40
     failed_pages_dir: Path = ROOT / "data" / "samples" / "failed"

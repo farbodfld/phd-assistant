@@ -68,6 +68,19 @@ def _retryable(exc) -> bool:
     return False
 
 
+def _drop_connections(request):
+    http = getattr(request, "http", None)
+    inner = getattr(http, "http", http)                 # AuthorizedHttp wraps httplib2.Http
+    conns = getattr(inner, "connections", None)
+    if isinstance(conns, dict):
+        for conn in list(conns.values()):
+            try:
+                conn.close()
+            except Exception:
+                pass
+        conns.clear()
+
+
 class GmailClient:
     MIN_INTERVAL = 0.06          # ~16 calls/second, well under Gmail's per-user quota
     MAX_RETRIES = 7
@@ -94,6 +107,13 @@ class GmailClient:
                     raise
                 self._sleep(delay)
                 delay = min(delay * 2, 64)
+            except (OSError, ConnectionError, TimeoutError) as exc:   # ssl.SSLError is an OSError
+                # A connection left idle during long model calls goes stale ("[SYS] unknown error").
+                # Drop the pooled connections and try again on a fresh one.
+                if attempt >= 2:
+                    raise
+                _drop_connections(request)
+                self._sleep(1.0)
 
     def search(self, query: str, limit: int = 2000) -> list[str]:
         ids, token = [], None
@@ -143,6 +163,14 @@ class GmailClient:
     def send_draft(self, draft_id: str) -> str:
         """Send a Gmail draft exactly as it is now (with any edits Farbod made in Gmail). -> message id"""
         return self._exec(self._svc.users().drafts().send(userId="me", body={"id": draft_id}))["id"]
+
+    def delete_draft(self, draft_id: str) -> None:
+        from googleapiclient.errors import HttpError
+        try:
+            self._exec(self._svc.users().drafts().delete(userId="me", id=draft_id))
+        except HttpError as exc:
+            if getattr(getattr(exc, "resp", None), "status", None) != 404:
+                raise
 
     def draft_exists(self, draft_id: str) -> bool:
         from googleapiclient.errors import HttpError

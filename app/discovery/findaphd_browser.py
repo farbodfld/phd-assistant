@@ -60,8 +60,10 @@ class FindAPhDBrowser:
                 return Page(url, self._status, "", self.method)
             # A first navigation can be a 403 followed by an automatic reload.
             # Wait for actual content before deciding whether the run is blocked.
-            self._page.locator(selector).first.wait_for(
-                state="attached", timeout=get_settings().findaphd_page_wait_seconds * 1000)
+            target = self._page.locator(selector)
+            if detail:                     # a taken-down advert shows a notice instead of its content
+                target = target.or_(self._page.get_by_text("no longer listed", exact=False))
+            target.first.wait_for(state="attached", timeout=get_settings().findaphd_page_wait_seconds * 1000)
             html = self._page.content()
         except BrowserTimeout:
             return Page(url, self._status, "", self.method, blocked=self._status == 403,

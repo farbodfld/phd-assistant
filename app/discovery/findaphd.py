@@ -207,13 +207,26 @@ class Report:
     added: int = 0
     excluded: int = 0
     low_fit: int = 0
+    known: int = 0                      # already screened: checked on the list, not downloaded again
+    deadline_updates: int = 0
+    removed: list[str] = field(default_factory=list)
+    removed_active: list[str] = field(default_factory=list)
     review: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def summary(self):
         state = "بررسی ناقص" if self.errors else "بررسی کامل"
-        lines = [f"FindAPhD | {state} | {self.pages} صفحه، {self.listed} شناسه ({self.programs} برنامه دکتری)، "
-                 f"{self.archived} آگهی خوانده‌شده، {self.added} موقعیت جدید، {self.excluded} مورد کنارگذاشته‌شده"]
+        lines = [f"FindAPhD | {state} | {self.pages} صفحه، {self.listed} شناسه ({self.programs} برنامه دکتری)",
+                 f"{self.known} آگهی رو قبلاً بررسی کرده بودیم: فقط تو لیست چک شدن که هنوز هستن، دوباره دانلود نشدن",
+                 f"{self.archived} آگهی جدید خونده شد: {self.added} موقعیت جدید، {self.excluded} مورد کنارگذاشته‌شده"]
+        if self.deadline_updates:
+            lines.append(f"deadline {self.deadline_updates} پوزیشن تو سایت عوض شده بود و به‌روز شد")
+        if self.removed:
+            lines.append(f"{len(self.removed)} آگهی از سایت برداشته شده و ردیفش بسته شد:")
+            lines += [f"• {t}" for t in self.removed[:10]]
+        if self.removed_active:
+            lines.append("این آگهی‌ها برداشته شدن ولی چون روشون کار کردی، ردیفشون باز موند:")
+            lines += [f"• {t}" for t in self.removed_active[:10]]
         if self.low_fit:
             lines.append(f"{self.low_fit} آگهی score کمتر از حداقل داشت و ذخیره نشد")
         if self.review:
@@ -244,7 +257,9 @@ def _read(fetcher, url):
     return page.html
 
 
-def _archive(fetcher, folder, report, max_pages):
+def _archive(fetcher, folder, report, max_pages, skip=frozenset()):
+    """Every list page is read (that is how we know an advert is still live). An advert page is downloaded
+    only for a listing we have not screened yet."""
     projects = {}
     n = 1
     while True:
@@ -269,8 +284,12 @@ def _archive(fetcher, folder, report, max_pages):
 
     report.listed = len(projects)
     report.programs = sum(map(is_program, projects))
+    report._cards = projects
     refresh_after = datetime.now(timezone.utc) - timedelta(days=7)
     for code, card in projects.items():
+        if code in skip:
+            report.known += 1
+            continue
         path = folder / f"findaphd_project_{code}.html"
         try:
             if path.exists() and path.stat().st_mtime >= refresh_after.timestamp():
@@ -329,8 +348,10 @@ def run_findaphd(session, fetcher, llm, folder: Path, today: date, max_pages=Non
     report = Report()
     positions = list(session.scalars(select(Position)))
     known = {project_id(p.link) for p in positions if p.source == "findaphd"}
+    screened = {m.key.split(":", 1)[1] for m in session.scalars(select(Meta).where(Meta.key.like("findaphd:%")))
+                if m.key != "findaphd:last-scheduled"}
     screen_available = True
-    for ad in _archive(fetcher, folder, report, max_pages):
+    for ad in _archive(fetcher, folder, report, max_pages, skip=(known | screened) - {None}):
         key = f"findaphd:{ad.code}"
         if ad.code in known or session.get(Meta, key) or not screen_available:
             continue
@@ -374,5 +395,45 @@ def run_findaphd(session, fetcher, llm, folder: Path, today: date, max_pages=Non
                 verdict = "added"
         session.add(Meta(key=key, value=verdict))
         session.commit()
+    if not report.errors and getattr(report, "_cards", None):
+        _check_tracker_rows(session, fetcher, report, report._cards, today)
     session.add(Notification(kind="report", ref_type="discovery", text=report.summary()))
     return report
+
+
+REMOVED = "REMOVED from FindAPhD"
+MAX_REMOVAL_CHECKS = 30
+
+
+def _check_tracker_rows(session, fetcher, report, cards, today):
+    """After a complete sweep: update deadlines from the list cards, and confirm that rows missing from the
+    list were really taken down (a row can simply sit outside this search's filter)."""
+    checks = 0
+    for p in session.scalars(select(Position).where(Position.closed.is_(False))):
+        code = project_id(p.link)
+        if not code:
+            continue
+        card = cards.get(code)
+        if card is not None:
+            new = _to_date(card.deadline)
+            if new and new != p.deadline_date:
+                old = p.deadline_date
+                p.deadline_date, p.deadline_text = new, card.deadline
+                p.add_status(f"Deadline changed on FindAPhD: {old} -> {new}.", on=today)
+                report.deadline_updates += 1
+            continue
+        if REMOVED in (p.status or "") or checks >= MAX_REMOVAL_CHECKS:
+            continue
+        checks += 1
+        page = fetcher.get(p.link)
+        gone = page.status in (404, 410) or "no longer listed" in (page.html or "").lower()
+        if not gone:
+            continue                                   # still online, or cannot tell: try again next time
+        if p.email_done or p.portal_done or p.email_sent or p.portal_submitted:
+            p.add_status(f"{REMOVED} (already in progress, row kept active)", on=today)
+            report.removed_active.append(p.title)
+        else:
+            p.closed = True
+            p.add_status(f"CLOSED: {REMOVED}", on=today)
+            report.removed.append(p.title)
+    session.commit()

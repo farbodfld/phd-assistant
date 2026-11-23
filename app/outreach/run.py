@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.models import Notification
-from app.llm.client import BudgetExceeded
+from app.llm.client import BudgetExceeded, LLMRefused
 from app.outreach.gmail_sync import push_drafts, sync_drafts
 from app.outreach.initial import draft_initial, needs_initial
 from app.outreach.reminder import draft_due_reminders
@@ -20,6 +20,7 @@ class OutreachReport:
     initial: int = 0
     no_email: int = 0
     skipped: int = 0
+    refused: int = 0
     waiting: int = 0            # positions left for the next run (budget or daily limit)
     pushed: int = 0
     errors: list[str] = field(default_factory=list)
@@ -36,6 +37,8 @@ class OutreachReport:
             lines.append(f"{self.no_email} پوزیشن آدرس ایمیل supervisor نداشت (تو کارهای تو اضافه شد)")
         if self.skipped:
             lines.append(f"{self.skipped} پوزیشن طبق آگهی یا جواب قبلی استاد نباید ایمیل بگیره")
+        if self.refused:
+            lines.append(f"{self.refused} پوزیشن رو مدل ایمیل براش ننوشت (refusal)؛ تو کارهای تو اضافه شد")
         if self.waiting:
             lines.append(f"{self.waiting} پوزیشن دیگه برای اجرای بعدی موند")
         return "\n".join(lines + [f"⚠️ {e}" for e in self.errors[:5]])
@@ -65,6 +68,17 @@ def run_outreach(s: Session, llm, today: date, gmail=None, fetcher=None, limit: 
             break
         try:
             draft = draft_initial(s, p, llm, today, fetcher)
+        except LLMRefused:
+            # The model declines this advert (e.g. some biology topics). Retrying gives the same answer:
+            # record it once and leave the email to Farbod.
+            s.rollback()
+            from app.db.models import Meta, UserTask
+            s.merge(Meta(key=f"outreach:{p.id}", value="model declined; write it yourself"))
+            s.add(UserTask(position_id=p.id, due_on=p.deadline_date,
+                           text=f"مدل برای «{p.title}» ({p.university}) ایمیل ننوشت (refusal). اگه می‌خوای، خودت بنویس."))
+            r.refused += 1
+            s.commit()
+            continue
         except BudgetExceeded:
             s.rollback()
             r.waiting = len(queue) - i

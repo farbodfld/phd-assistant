@@ -31,7 +31,10 @@ SESSION_STEPS = [
     "Write the documents in the Portal session from profile.yaml facts only; show each one to Farbod first.",
     "Fill the portal in Farbod's Chrome page by page; upload files from the documents and position folders.",
     "Stop before Submit. Farbod handles login, passport, visa, immigration questions and declarations.",
-    "After Submit: record it with /done <id> <reference> in Telegram (or `phd portal-done`).",
+    "After Submit: put the final version of every file you wrote, plus submitted.json (uploaded files with kind, "
+    "referees, key answers, reference), in the `submitted` folder next to this pack (position folder on the laptop, "
+    "or the position's Google Drive folder).",
+    "Then Farbod sends /done <id> <reference> in Telegram (or `phd portal-done`): the files are stored and linked.",
 ]
 LEFT_FOR_FARBOD = ["Log in or create the account (password)", "Passport number and upload, visa uploads",
                    "Immigration questions and declarations", "Any fee", "Submit"]

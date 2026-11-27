@@ -77,6 +77,10 @@ TOOLS = [
           {"position_id": INT}, ["position_id"]),
     _tool("mark_portal_submitted", "Record that he submitted the portal application himself (only when he says so).",
           {"position_id": INT, "reference": STR}, ["position_id"]),
+    _tool("portal_submission", "What was submitted through the portal for a position: the files the Portal session "
+          "wrote and uploaded, referees, key answers, reference number. Use it when a university writes back about "
+          "an application. send_files=true sends him the stored files.",
+          {"position_id": INT, "send_files": {"type": "boolean"}}, ["position_id"]),
     _tool("skip_portal", "He does not want to apply to this portal: no pack and no deadline nudges.",
           {"position_id": INT}, ["position_id"]),
 ]
@@ -105,6 +109,7 @@ class Agent:
         self.llm, self.ui, self.today = llm, ui, today
         self.shown: list[int] = []
         self.packs: list[int] = []
+        self.files: list[str] = []
 
     # ----------------------------------------------------------------- tools
     def run_tool(self, s, name: str, a: dict):
@@ -250,6 +255,16 @@ class Agent:
             from app.portal.queue import candidates, packed
             return {"packs_ready": [_pos_line(p) for p in packed(s, self.today)],
                     "without_pack": [_pos_line(p) for p in candidates(s, self.today)[:25]]}
+        if name == "portal_submission":
+            from app.portal.submitted import submission_info, submitted_dir
+            p = s.get(Position, a["position_id"])
+            if not p:
+                return {"error": "no such position"}
+            info = submission_info(s, p)
+            if a.get("send_files"):
+                base = submitted_dir(p).parent
+                self.files += [str(base / f["file"]) for f in info["files"]]
+            return info
         if name in ("prepare_portal_pack", "mark_portal_submitted", "skip_portal"):
             p = s.get(Position, a["position_id"])
             if not p:
@@ -261,14 +276,16 @@ class Agent:
                 self.packs.append(p.id)
                 return {"ok": True, "pack": pack.path.name, "issues": pack.issues,
                         "note": f"shown to him after your answer; he starts it in the Portal session with 'پورتال #{p.id}'"}
-            from app.portal.queue import mark_submitted, skip
-            closed = []
+            from app.portal.queue import skip
             if name == "mark_portal_submitted":
-                closed = mark_submitted(s, p, self.today, a.get("reference"))
-            else:
-                skip(s, p, self.today)
+                from app.portal.submitted import record_submission
+                sub = record_submission(s, p, self.today, a.get("reference"))
+                s.commit()
+                return {"ok": True, "files_stored": sub.files, "closed_by_programme_cap": sub.closed,
+                        "issues": sub.issues}
+            skip(s, p, self.today)
             s.commit()
-            return {"ok": True, **({"closed_by_programme_cap": closed} if closed else {})}
+            return {"ok": True}
         return {"error": f"unknown tool {name}"}
 
     # ----------------------------------------------------------------- conversation

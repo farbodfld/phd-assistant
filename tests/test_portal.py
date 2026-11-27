@@ -134,6 +134,52 @@ def test_submitted_and_skipped(db, folders):
         assert candidates(s, TODAY) == [] and state(s, q.id)["status"] == "skipped"
 
 
+def test_submission_files_are_stored_and_linked(db, folders):
+    from app.db.models import Document
+    from app.portal.submitted import record_submission, submission_info, submitted_dir
+    with session_scope() as s:
+        p = _portal(s, title="NW-DMS project A", university="University of Liverpool")
+        d = submitted_dir(p)
+        d.mkdir(parents=True)
+        (d / "Research_Proposal.pdf").write_bytes(b"%PDF proposal")
+        (d / "Personal_Statement.docx").write_bytes(b"docx")
+        (d / "submitted.json").write_text(json.dumps({
+            "reference": "REF9", "referees": ["Behnam Gholami", "Danial X"],
+            "uploaded": [{"file": "Research_Proposal.pdf", "kind": "proposal"},
+                         {"file": "Personal_Statement.docx", "kind": "statement"},
+                         {"file": "Farbod_Fooladi_CV.pdf", "kind": "cv"}]}), encoding="utf-8")
+        sub = record_submission(s, p, TODAY)
+        s.commit()
+        assert sorted(sub.files) == ["Personal_Statement.docx", "Research_Proposal.pdf"]
+        assert s.scalars(select(Application)).one().reference == "REF9"
+        kinds = {x.filename: x.kind for x in s.scalars(select(Document).where(Document.position_id == p.id))}
+        assert kinds["submitted/Research_Proposal.pdf"] == "proposal" and kinds["submitted/Personal_Statement.docx"] == "statement"
+        assert "Research_Proposal.pdf, Personal_Statement.docx, Farbod_Fooladi_CV.pdf" in p.status
+        assert "Behnam Gholami" in p.status
+        info = submission_info(s, p)
+        assert info["reference"] == "REF9" and len(info["files"]) == 2
+        from app.portal.submitted import ingest
+        again = ingest(s, p, TODAY)
+        assert again.files == []                                          # not recorded twice
+
+
+def test_submission_from_drive(db, folders, monkeypatch):
+    from app.config import get_settings
+    from app.portal.submitted import record_submission
+    monkeypatch.setattr(get_settings(), "drive_packs", True)
+
+    class FakeDrive:
+        def download_submitted(self, pid, title, uni, dest):
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "Proposal.docx").write_bytes(b"x")
+            return [dest / "Proposal.docx"]
+
+    with session_scope() as s:
+        p = _portal(s)
+        sub = record_submission(s, p, TODAY, "R1", drive=FakeDrive())
+        assert sub.files == ["Proposal.docx"] and p.portal_done
+
+
 def test_bot_portal_card_files_done_skip(db, folders, monkeypatch):
     import app.portal.pack as pack_mod
     monkeypatch.setattr(pack_mod, "transcripts_for", lambda s, p: [])
@@ -161,6 +207,12 @@ def test_bot_portal_card_files_done_skip(db, folders, monkeypatch):
         assert any(d.endswith("Portal_Pack.md") for d in api.docs) and any(d.endswith(".json") for d in api.docs)
         bot.handle(s, _msg(f"/done {p.id} ABC123"))
         assert "Submit شد" in api.sent[-1][1] and s.get(Position, p.id).portal_done
+        assert "فایلی توی فولدر submitted پیدا نشد" in api.sent[-1][1]
+        from app.portal.submitted import submitted_dir
+        submitted_dir(p).mkdir(parents=True)
+        (submitted_dir(p) / "Proposal.pdf").write_bytes(b"x")
+        bot.handle(s, _msg(f"/done {p.id}"))                              # again later: only the new files
+        assert "قبلاً Submit ثبت شده" in api.sent[-1][1] and "Proposal.pdf" in api.sent[-1][1]
         assert s.scalars(select(Application)).one().reference == "ABC123"
         bot.handle(s, _msg(f"/skip {q.id}"))
         assert state(s, q.id)["status"] == "skipped" and packed(s, TODAY) == []

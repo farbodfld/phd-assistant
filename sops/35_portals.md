@@ -20,3 +20,6 @@
   positions of that programme are closed.
 - Farbod presses Submit himself, then sends /done <id> <reference> in Telegram (or phd portal-done).
   Deadline nudges at 7, 3, 1 and 0 days.
+- After Submit the Portal session saves the final files and submitted.json in submitted/ next to the
+  pack; /done stores them in the database so later replies from the university can be checked
+  against what was actually sent.

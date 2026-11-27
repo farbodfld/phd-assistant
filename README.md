@@ -252,9 +252,14 @@ attached to emails.
   application, or the deadline is within `PORTAL_AUTO_DAYS` (10) and the score at least
   `PORTAL_AUTO_MIN_SCORE` (70); at most `PORTAL_DAILY_PACKS` (10) a day. Deadline nudges at 7, 3, 1
   and 0 days for packs not submitted.
-- Google Drive (`DRIVE_PACKS=true`, then `phd gmail-auth` once to add the `drive.file` scope): each
+- Google Drive (`DRIVE_PACKS=true`, then `phd gmail-auth` once to add the `drive.file` and `drive.readonly` scopes): each
   pack is also uploaded to `My Drive/PhD Portal Packs/<id> - <title> (<university>)/`, so the Portal
   session can read it while the agent runs on a server. A failed upload keeps the local pack.
+- What was submitted: after Submit the Portal session puts the final files and `submitted.json`
+  (files uploaded, referees, key answers, reference) in `submitted/` next to the pack (the position
+  folder, or its Drive folder). `/done <id> <ref>` stores them, links them to the position in the
+  documents table and adds a status line; `/done <id>` again later picks up files added since. The
+  chat assistant can answer "what did I send to #301" and send the files.
 - Telegram (/portals): a card per pack with the cap, rules, last contact and the line to type in the
   Portal session (`پورتال #id`); 📎 sends the pack, ⏭ skips. After Submit: `/done <id> <reference>`
   (closes the rest of a programme once its cap is reached) or `/skip <id>`.

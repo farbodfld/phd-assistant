@@ -12,12 +12,13 @@ from pathlib import Path
 from app.config import get_settings
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]   # read, labels, drafts, send
-DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"  # only files the agent creates (portal packs)
+DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file",      # create and update portal packs
+                "https://www.googleapis.com/auth/drive.readonly"]  # read back what the Portal session submitted
 
 
 def scopes() -> list[str]:
-    """Gmail always; Drive (own files only) when portal packs go to Google Drive."""
-    return SCOPES + ([DRIVE_SCOPE] if get_settings().drive_packs else [])
+    """Gmail always; Drive when portal packs go to Google Drive."""
+    return SCOPES + (DRIVE_SCOPES if get_settings().drive_packs else [])
 
 
 class GmailAuthError(RuntimeError):

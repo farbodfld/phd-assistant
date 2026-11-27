@@ -355,22 +355,34 @@ class Bot:
             self.say("\n".join(lines), rows)
 
     def portal_done(self, s, pid: int, reference: str | None = None):
-        from app.portal.queue import mark_submitted
+        from app.portal.submitted import record_submission
         p = s.get(Position, pid)
         if p is None:
             self.tell(f"پوزیشن #{pid} پیدا نشد.")
             return
-        if p.portal_done:
-            self.tell(f"#{pid} قبلاً Submit ثبت شده.")
+        if p.portal_done:                         # already recorded: only bring in files added since
+            from app.portal.submitted import ingest
+            sub = ingest(s, p, self.today())
+            s.commit()
+            got = f"فایل‌های جدید ثبت شدن: {'، '.join(sub.files)}" if sub.files else "فایل جدیدی توی submitted نبود."
+            self.tell(f"#{pid} قبلاً Submit ثبت شده. {got}" + "".join(f"\n⚠️ {i}" for i in sub.issues))
             return
-        closed = mark_submitted(s, p, self.today(), reference)
+        sub = record_submission(s, p, self.today(), reference)
         s.commit()
         m = s.get(Meta, f"tg:pmsg:{pid}")
         if m:
             self.api.edit_buttons(self.owner, int(m.value))
-        msg = f"✅ ثبت شد: #{pid} Submit شد" + (f" (مرجع {reference})" if reference else "") + "."
-        if closed:
-            msg += f"\nسقف برنامه پر شد؛ این‌ها بسته شدن: {'، '.join('#' + str(i) for i in closed)}"
+        ref = reference or sub.manifest.get("reference")
+        msg = f"✅ ثبت شد: #{pid} Submit شد" + (f" (مرجع {ref})" if ref else "") + "."
+        if sub.files:
+            msg += f"\n📁 فایل‌های ارسالی ذخیره شدن: {'، '.join(sub.files)}"
+        else:
+            msg += f"\n📁 فایلی توی فولدر submitted پیدا نشد؛ اگه سشن Portal فایلی ساخته، بذارش اونجا و دوباره /done {pid} بفرست."
+        if sub.manifest.get("referees"):
+            msg += f"\nرفرنس‌ها: {'، '.join(sub.manifest['referees'])}"
+        if sub.closed:
+            msg += f"\nسقف برنامه پر شد؛ این‌ها بسته شدن: {'، '.join('#' + str(i) for i in sub.closed)}"
+        msg += "".join(f"\n⚠️ {i}" for i in sub.issues)
         self.tell(msg)
 
     def portal_skip(self, s, pid: int):
@@ -671,6 +683,9 @@ class Bot:
             p = s.get(Position, pid)
             if p:
                 self.show_pack(s, p)
+        for path in dict.fromkeys(getattr(agent, "files", [])):
+            if Path(path).exists():
+                self.api.send_document(self.owner, path, caption=Path(path).name)
 
     def status(self, s) -> str:
         start = datetime.combine(self.today(), datetime.min.time())

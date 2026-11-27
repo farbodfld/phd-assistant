@@ -282,7 +282,7 @@ def main(argv=None):
                 print("-", line)
     elif args.cmd in ("portal-done", "portal-skip"):
         from app.db.models import Position
-        from app.portal.queue import mark_submitted, skip
+        from app.portal.queue import skip
         with session_scope() as s:
             p = s.get(Position, args.position_id)
             if p is None:
@@ -291,10 +291,19 @@ def main(argv=None):
                 skip(s, p, date.today())
                 print(f"#{p.id} skipped")
             else:
-                closed = mark_submitted(s, p, date.today(), args.reference)
-                print(f"#{p.id} recorded as submitted")
-                if closed:
-                    print("programme cap reached; closed:", ", ".join(f"#{i}" for i in closed))
+                from app.portal.submitted import ingest, record_submission
+                if p.portal_done:
+                    sub = ingest(s, p, date.today())
+                    print(f"#{p.id} already submitted; new files:", ", ".join(sub.files) or "none")
+                else:
+                    sub = record_submission(s, p, date.today(), args.reference)
+                    print(f"#{p.id} recorded as submitted")
+                for name in sub.files:
+                    print("  stored:", name)
+                if sub.closed:
+                    print("programme cap reached; closed:", ", ".join(f"#{i}" for i in sub.closed))
+                for line in sub.issues:
+                    print("-", line)
     elif args.cmd == "portal-run":
         from app.discovery.worker import portals
         print(portals(limit=args.limit).summary())

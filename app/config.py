@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     portal_auto_min_score: int = 70         # ...and the score is at least this
     portal_daily_packs: int = 10            # most packs prepared by the morning run (no model calls; facts only)
     # Portal packs also go to Google Drive (for the Portal session when the agent runs on a server).
-    # Turning this on needs `phd gmail-auth` once more, to add the drive.file scope.
+    # Turning this on needs `phd gmail-auth` once more, to add the drive.file and drive.readonly scopes.
     drive_packs: bool = False
     drive_packs_folder: str = "PhD Portal Packs"
     max_reminders: int = 4                  # reminders per position; after the last one, stop

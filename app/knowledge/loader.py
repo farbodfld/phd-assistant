@@ -25,7 +25,6 @@ TASK_SOPS: dict[str, list[str]] = {
     "score_position": ["50_scoring", "40_funding_and_eligibility"],
     "risk_check": ["40_funding_and_eligibility", "70_approvals_and_notifications"],
     "portal_step": ["35_portals"],
-    "portal_plan": ["35_portals", "30_documents"],
     "edit_document": ["30_documents"],
     "daily_report": ["70_approvals_and_notifications", "60_tracker"],
     "chat": ["70_approvals_and_notifications", "60_tracker"],

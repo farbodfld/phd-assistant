@@ -22,7 +22,6 @@ ROUTES: dict[str, Route] = {
     "screen_listing": Route("cheap", 600),        # first-pass funding / topic filter
     "score_position": Route("cheap", 1500),
     "extract_requirements": Route("cheap", 800),
-    "portal_plan": Route("cheap", 1500),          # what a portal application needs, from the advert
     "daily_report": Route("cheap", 1200),
     "chat_simple": Route("cheap", 800),           # "what are this week's deadlines?"
 

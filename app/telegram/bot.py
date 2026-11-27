@@ -1,6 +1,7 @@
 """Farbod's Telegram bot: a guided review of drafts, stage by stage, and a digest of everything else.
 
-Stages, in order: replies to supervisors, reminders, new first emails (portals come in phase 8).
+Stages, in order: replies to supervisors, new first emails, reminders, then portals (phase 8: packs to review,
+files to download, Submit recorded by his button).
 Each stage shows its drafts numbered ("یادآوری ۳ از ۱۴ · #27") with Approve / Edit / Deny, then asks
 whether the stage is finished, checks the database and Gmail, and only then offers the next stage.
 Nothing reaches a professor without Approve. Reports and tasks arrive grouped in one digest.
@@ -28,17 +29,19 @@ log = logging.getLogger("telegram")
 OPEN = ("pending", "approved")
 STAGES = [("reply", "جواب به ایمیل استادها", "جواب"), ("initial", "ایمیل‌های اولیه جدید", "ایمیل جدید"),
           ("reminder", "یادآوری‌ها", "یادآوری")]
-PORTALS = "پورتال‌ها (فاز ۸، هنوز ساخته نشده)"
+PORTALS = "پورتال‌ها"
 STAGE = {k: (title, one) for k, title, one in STAGES}
 FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 COMMANDS = [("drafts", "بررسی draftها، مرحله به مرحله"), ("new", "شروع یه گفتگوی تازه با دستیار"), ("status", "وضعیت: پوزیشن‌ها، draftها، هزینه امروز"),
+            ("portals", "پورتال‌ها: پک‌های آماده و پیشنهادها"), ("done", "ثبت Submit پورتال: /done 301 مرجع"),
+            ("skip", "اپلای نکردن پورتال: /skip 301"),
             ("tasks", "کارهایی که فقط خودت می‌تونی بکنی"), ("show", "نشون دادن یه draft با شماره‌ش"),
             ("cancel", "لغو ویرایش"), ("help", "راهنما")]
 HELP = ("هر سؤالی داری یا هر کاری می‌خوای، همینجا بنویس. مثلاً «کدوم پوزیشن‌ها این هفته deadline دارن؟» یا "
         "«ایمیل استاد پوزیشن #120 رو پیدا کردم: x@uni.ac.uk، براش ایمیل بنویس».\n"
         "برای حرف زدن درباره یه draft، روی پیامش Reply بزن. ایمیل فقط با دکمه ✅ Approve فرستاده میشه.\n\n"
         "دستورها:\n/drafts بررسی draftها، مرحله به مرحله\n/new گفتگوی تازه\n/show 27 نشون دادن draft شماره ۲۷\n"
-        "/status وضعیت\n/tasks کارهای تو\n/cancel لغو ویرایش")
+        "/portals پورتال‌ها\n/done 301 ABC123 ثبت Submit پورتال\n/skip 301 اپلای نمی‌کنم\n/status وضعیت\n/tasks کارهای تو\n/cancel لغو ویرایش")
 
 
 def n_fa(n: int) -> str:
@@ -175,13 +178,18 @@ class Bot:
     def offer_review(self, s):
         """Called at the end of a run: the four categories, then a start button."""
         stage = self.next_stage(s)
-        if stage is None:
-            self.tell("✅ draftی منتظر تصمیم تو نیست.")
+        packs, picks = self.portal_counts(s)
+        if stage is None and not packs:
+            self.tell("✅ draftی منتظر تصمیم تو نیست." + (f" {n_fa(picks)} پورتال برای انتخاب هست: /portals" if picks else ""))
             return
         lines = [bold("📬 ایمیل‌ها آماده‌ن. به این ترتیب با هم می‌بینیمشون:")]
         for i, (k, title, _) in enumerate(STAGES, 1):
             lines.append(fa(f"{n_fa(i)}. {title}: {n_fa(len(self.pending(s, k)))}"))
-        lines.append(fa(f"{n_fa(len(STAGES) + 1)}. {PORTALS}"))
+        lines.append(fa(f"{n_fa(len(STAGES) + 1)}. {PORTALS}: {n_fa(packs)} پک آماده، {n_fa(picks)} پیشنهاد"))
+        if stage is None:
+            lines.append(fa("ایمیلی منتظر نیست. بریم سراغ پورتال‌ها؟"))
+            self.say("\n".join(lines), [[("▶️ شروع", "portals"), ("بعداً", "later")]])
+            return
         lines.append(fa(f"از «{STAGE[stage][0]}» شروع کنیم؟"))
         self.say("\n".join(lines), [[("▶️ شروع", f"stage:{stage}"), ("بعداً", "later")]])
 
@@ -223,8 +231,13 @@ class Bot:
         else:
             s.merge(Meta(key="tg:stage", value=None))
             s.commit()
-            self.say(bold(f"✅ {title} تموم شد. همه ایمیل‌ها بررسی شدن.") + "\n" +
-                     fa(f"مرحله بعدی: {PORTALS}."))
+            packs, picks = self.portal_counts(s)
+            if packs or picks:
+                self.say(bold(f"✅ {title} تموم شد. همه ایمیل‌ها بررسی شدن.") + "\n" +
+                         fa(f"مرحله بعد: {PORTALS} ({n_fa(packs)} پک آماده، {n_fa(picks)} پیشنهاد). آماده‌ای؟"),
+                         [[("▶️ بریم", "portals"), ("بعداً", "later")]])
+            else:
+                self.say(bold(f"✅ {title} تموم شد. همه ایمیل‌ها بررسی شدن."))
 
     # ------------------------------------------------------------------ outbox
     def flush(self, s) -> int:
@@ -256,6 +269,149 @@ class Bot:
                 self.say("\n".join(fa(x) for x in n.text.split("\n")))
             sent += 1
         return sent
+
+    # ------------------------------------------------------------------ portals (phase 8)
+    def portal_counts(self, s) -> tuple[int, int]:
+        from app.portal.queue import candidates, packed
+        today = self.today()
+        return len(packed(s, today)), len(candidates(s, today))
+
+    def show_pack(self, s, p: Position, prefix: str = ""):
+        """The portal card: what the Portal session needs, and how to start it."""
+        import json
+        from app.portal.queue import state
+        st = state(s, p.id) or {}
+        d = {}
+        if st.get("json") and Path(st["json"]).exists():
+            d = json.loads(Path(st["json"]).read_text(encoding="utf-8"))
+        dl = d.get("deadline") or {}
+        days = dl.get("days_left")
+        when = dl.get("date") or "rolling"
+        if days is not None:
+            when += f" ({n_fa(days)} روز مونده)" + (" ⚠️" if days <= 3 else "")
+        head = [bold(f"🗂 پورتال #{p.id}"), fa(f"{p.title}"), fa(f"دانشگاه: {p.university or ''}")]
+        if p.supervisor_contact:
+            head.append(fa(f"استاد: {p.supervisor_contact}"))
+        head.append(fa(f"مهلت: {when} · اسکور {p.score}"))
+        if p.fit_note:
+            head.append(fa(f"چرا: {p.fit_note}"))
+        if p.funding:
+            head.append(fa(f"فاند: {p.funding}"))
+        cap = d.get("programme_cap")
+        if cap:
+            done = "، ".join(f"#{i}" for i in cap["submitted"]) or "هیچی"
+            head.append(fa(f"سقف برنامه: {cap['name']}، حداکثر {n_fa(cap['max'])}. اپلای‌شده: {done}")
+                        + (" ⛔️ پره" if cap["full"] else ""))
+        if d.get("ai_writing_banned"):
+            head.append(fa("⚠️ متن نوشته‌شده با AI قبول نمی‌کنن: statement رو خودت بنویس."))
+        hist = d.get("contact_history") or []
+        if hist:
+            last = hist[-1]
+            arrow = "جواب استاد" if last["direction"] == "in" else "ایمیل ما"
+            head.append(fa(f"آخرین تماس: {last['date']} {arrow}: {last['about'][:120]}"))
+        else:
+            head.append(fa("تماس قبلی: نداشتیم"))
+        files = d.get("files") or {}
+        ok = ["CV ✅" if files.get("cv") else "CV ❌", "ریزنمرات ✅" if files.get("transcripts") else "ریزنمرات ❌"]
+        head.append(fa("آماده: " + "، ".join(ok) + ". بقیه مدارک رو سشن Portal روی template دانشگاه می‌نویسه."))
+        if p.link:
+            head.append(fa(f"🔗 آگهی: {p.link}"))
+        if st.get("drive_folder"):
+            head.append(fa("☁️ پک روی Google Drive هم هست."))
+        head += [fa(f"⚠️ {i}") for i in (st.get("issues") or [])]
+        head.append(fa(f"برای شروع، توی سشن Portal بنویس: ") + bold(f"پورتال #{p.id}"))
+        head.append(fa(f"بعد از Submit اینجا بفرست: /done {p.id} <شماره مرجع>"))
+        rows = [[("📎 پک", f"pf:{p.id}"), ("⏭ اپلای نمی‌کنم", f"px:{p.id}")]]
+        mid = self.say((prefix + "\n\n" if prefix else "") + "\n".join(head), rows)
+        s.merge(Meta(key=f"tg:pmsg:{p.id}", value=mid))
+        s.commit()
+
+    def present_portals(self, s):
+        from app.portal.queue import candidates, packed
+        today = self.today()
+        ready, picks = packed(s, today), candidates(s, today)
+        if not ready and not picks:
+            self.tell("✅ پورتالی منتظر نیست.")
+            return
+        self.say(bold(f"🗂 پورتال‌ها: {n_fa(len(ready))} آماده") + "\n" +
+                 fa("هر کدوم رو توی سشن Portal پروژه Find PHD شروع کن (با Claude in Chrome). Submit با خودته؛ "
+                    "بعدش اینجا /done <شماره> <شماره مرجع> بفرست."))
+        for p in ready:
+            self.show_pack(s, p)
+        if picks:
+            lines = [bold(f"📦 پورتال‌های دیگه ({n_fa(len(picks))} تا، به ترتیب مهلت):")]
+            for p in picks[:10]:
+                when = p.deadline_date.isoformat() if p.deadline_date else "rolling"
+                lines.append(fa(f"#{p.id} · {when} · score {p.score} · {p.title[:70]} ({(p.university or '')[:30]})"))
+            lines.append(fa("هر کدوم رو بزنی، پکش آماده میشه (هزینه‌ای نداره)."))
+            rows, row = [], []
+            for p in picks[:10]:
+                row.append((f"📦 #{p.id}", f"pp:{p.id}"))
+                if len(row) == 3:
+                    rows.append(row)
+                    row = []
+            if row:
+                rows.append(row)
+            self.say("\n".join(lines), rows)
+
+    def portal_done(self, s, pid: int, reference: str | None = None):
+        from app.portal.queue import mark_submitted
+        p = s.get(Position, pid)
+        if p is None:
+            self.tell(f"پوزیشن #{pid} پیدا نشد.")
+            return
+        if p.portal_done:
+            self.tell(f"#{pid} قبلاً Submit ثبت شده.")
+            return
+        closed = mark_submitted(s, p, self.today(), reference)
+        s.commit()
+        m = s.get(Meta, f"tg:pmsg:{pid}")
+        if m:
+            self.api.edit_buttons(self.owner, int(m.value))
+        msg = f"✅ ثبت شد: #{pid} Submit شد" + (f" (مرجع {reference})" if reference else "") + "."
+        if closed:
+            msg += f"\nسقف برنامه پر شد؛ این‌ها بسته شدن: {'، '.join('#' + str(i) for i in closed)}"
+        self.tell(msg)
+
+    def portal_skip(self, s, pid: int):
+        from app.portal.queue import skip
+        p = s.get(Position, pid)
+        if p is None:
+            self.tell(f"پوزیشن #{pid} پیدا نشد.")
+            return
+        skip(s, p, self.today())
+        s.commit()
+        m = s.get(Meta, f"tg:pmsg:{pid}")
+        if m:
+            self.api.edit_buttons(self.owner, int(m.value))
+        self.tell(f"⏭ باشه، برای #{pid} دیگه پک یا یادآوری پورتال نمیاد.")
+
+    def portal_action(self, s, action: str, pid: int):
+        from app.portal.queue import state
+        p = s.get(Position, pid)
+        if p is None:
+            self.tell("این پوزیشن پیدا نشد.")
+            return
+        st = state(s, pid) or {}
+        if action == "pp":
+            if st.get("status") == "packed":
+                self.show_pack(s, p)
+                return
+            from app.portal.run import prepare
+            prepare(s, p, self.today())
+            s.commit()
+            self.show_pack(s, p, prefix=bold("✅ پک آماده شد:"))
+        elif action == "pf":
+            sent = 0
+            for f in (st.get("pack"), st.get("json")):
+                if f and Path(f).exists():
+                    self.api.send_document(self.owner, f, caption=f"#{pid} · {Path(f).name}")
+                    sent += 1
+            self.tell(f"📎 {n_fa(sent)} فایل فرستادم." if sent else "پکی پیدا نشد. اول پک رو آماده کن.")
+        elif action == "ps":
+            self.portal_done(s, pid)
+        elif action == "px":
+            self.portal_skip(s, pid)
 
     # ------------------------------------------------------------------ actions
     def approve(self, s, d: Draft) -> str:
@@ -340,6 +496,12 @@ class Bot:
             return
         if action == "stage":
             self.present_stage(s, ref)
+            return
+        if action == "portals":
+            self.present_portals(s)
+            return
+        if action in ("pp", "pf", "ps", "px") and ref.isdigit():
+            self.portal_action(s, action, int(ref))
             return
         if action == "done":
             self.finish_stage(s, ref)
@@ -430,6 +592,18 @@ class Bot:
                     self.present_stage(s, stage)
                 else:
                     self.tell("✅ draftی منتظر نیست.")
+            elif cmd == "/portals":
+                self.present_portals(s)
+            elif cmd in ("/done", "/skip"):
+                parts = arg.split()
+                ref = parts[0].lstrip("#") if parts else ""
+                if not ref.isdigit():
+                    self.tell("مثلاً: /done 301 ABC123  یا  /skip 301")
+                    return
+                if cmd == "/done":
+                    self.portal_done(s, int(ref), " ".join(parts[1:]) or None)
+                else:
+                    self.portal_skip(s, int(ref))
             elif cmd == "/show":
                 ref = arg.strip().lstrip("#")
                 if not ref.isdigit():
@@ -452,6 +626,10 @@ class Bot:
             self.show_draft(s, d) if d else self.tell("این draft پیدا نشد.")
             return
         editing = s.get(Meta, "tg:editing")
+        if editing and isinstance(editing.value, str) and editing.value.startswith("portal:"):
+            s.delete(editing)          # portal texts are no longer edited here (Portal session)
+            s.commit()
+            editing = None
         if editing and editing.value and target is None:          # he pressed Edit: this text is the change
             d = s.get(Draft, int(editing.value))
             if d is None or d.status not in OPEN:
@@ -489,6 +667,10 @@ class Bot:
             d = s.get(Draft, draft_id)
             if d:
                 self.show_draft(s, d)
+        for pid in dict.fromkeys(agent.packs):
+            p = s.get(Position, pid)
+            if p:
+                self.show_pack(s, p)
 
     def status(self, s) -> str:
         start = datetime.combine(self.today(), datetime.min.time())
@@ -499,6 +681,7 @@ class Bot:
         lines = [bold("📊 وضعیت"), fa(f"پوزیشن‌های باز: {n_fa(open_pos)}"),
                  fa(f"draftهای منتظر: {self.overview(s) or 'هیچ'}"), fa(f"ایمیل‌های فرستاده‌شده: {n_fa(sent)}"),
                  fa(f"کارهای تو: {n_fa(tasks)}"),
+                 fa("پورتال‌ها: {} پک آماده، {} پیشنهاد".format(*map(n_fa, self.portal_counts(s)))),
                  fa(f"هزینه LLM امروز: ${spent:.2f} از ${get_settings().daily_budget_usd:.2f}")]
         return "\n".join(lines)
 

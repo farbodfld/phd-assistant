@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     timezone: str = "Europe/London"
     inbox_check_times: list[str] = ["08:00", "14:00", "17:00", "20:00"]
     inbox_lookback_days: int = 5            # every inbox check re-reads at least this many days back
+    portal_horizon_days: int = 21           # portal positions offered in Telegram: deadline within this many days
+    portal_min_score: int = 60              # ...and at least this score (invited positions always count)
+    portal_auto_days: int = 10              # the morning run prepares packs by itself when the deadline is this close
+    portal_auto_min_score: int = 70         # ...and the score is at least this
+    portal_daily_packs: int = 10            # most packs prepared by the morning run (no model calls; facts only)
+    # Portal packs also go to Google Drive (for the Portal session when the agent runs on a server).
+    # Turning this on needs `phd gmail-auth` once more, to add the drive.file scope.
+    drive_packs: bool = False
+    drive_packs_folder: str = "PhD Portal Packs"
     max_reminders: int = 4                  # reminders per position; after the last one, stop
     daily_run_time: str = "08:00"           # morning run: inbox, then both sites, then outreach and review
     findaphd_archive_dir: Path = ROOT / "data" / "findaphd"

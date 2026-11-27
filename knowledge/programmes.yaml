@@ -1,0 +1,20 @@
+# Doctoral programmes that cap how many of their projects one applicant may apply to.
+# A position belongs to a programme when any `match` string is in its title or university (case-insensitive)
+# and, if given, any `also` string is too. After a portal submission, once `max` positions of the programme
+# are submitted, the agent closes the other open positions of that programme.
+
+- name: MRC NW-DMS DLA (Liverpool and Manchester)
+  match: [nw-dms, nwdms]
+  max: 2
+  note: At most two projects across the whole programme, Liverpool and Manchester together.
+
+- name: Oxford Botnar studentships (NDORMS, DPhil RD_NNRA1)
+  match: [botnar]
+  also: [oxford]
+  max: 3
+  note: At most three Botnar projects on one DPhil application; one personal statement only.
+
+- name: GW4 BioMed
+  match: [gw4]
+  max: 2
+  note: At most two GW4 projects per round.

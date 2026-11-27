@@ -22,6 +22,7 @@ ROUTES: dict[str, Route] = {
     "screen_listing": Route("cheap", 600),        # first-pass funding / topic filter
     "score_position": Route("cheap", 1500),
     "extract_requirements": Route("cheap", 800),
+    "portal_plan": Route("cheap", 1500),          # what a portal application needs, from the advert
     "daily_report": Route("cheap", 1200),
     "chat_simple": Route("cheap", 800),           # "what are this week's deadlines?"
 
@@ -34,6 +35,7 @@ ROUTES: dict[str, Route] = {
     "edit_email": Route("strong", 1500),          # Farbod's edit instruction from Telegram
     "personal_statement": Route("strong", 4000),
     "research_proposal": Route("strong", 6000),
+    "edit_document": Route("strong", 6000),       # a statement or proposal revised after his instruction
     "risk_check": Route("strong", 1200),
     "portal_step": Route("strong", 2000),
     "chat": Route("strong", 2000),               # Farbod's conversation with the assistant in Telegram

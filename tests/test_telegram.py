@@ -140,7 +140,7 @@ def test_stages_in_order_numbered_and_checked_before_moving_on(db, folders):
         assert "آخرین ایمیل یا یادآوری قبلی: 2026-10-01" in api.sent[-2][1]
         bot.handle(s, _cb(f"d:{r.id}"))
         bot.handle(s, _cb("done:reminder"))
-        assert "همه ایمیل‌ها بررسی شدن" in api.sent[-1][1] and "پورتال" in api.sent[-1][1]
+        assert "همه ایمیل‌ها بررسی شدن" in api.sent[-1][1]
 
 
 def test_hash_number_shows_that_draft(db, folders):
@@ -341,7 +341,7 @@ def test_menu_lists_every_command():
 
     api = MenuAPI()
     Bot(api, OWNER).setup_menu()
-    assert [c for c, _ in api.commands] == ["drafts", "new", "status", "tasks", "show", "cancel", "help"]
+    assert [c for c, _ in api.commands] == ["drafts", "new", "status", "portals", "done", "skip", "tasks", "show", "cancel", "help"]
     assert all(d for _, d in COMMANDS)
 
 

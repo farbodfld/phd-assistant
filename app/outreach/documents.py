@@ -171,6 +171,7 @@ class Written:
     reference_only: bool
     notes_fa: list[str] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
+    doc: DocText | None = None
 
 
 def write_document(s: Session, p: Position, kind: str, llm, advert: str) -> Written:
@@ -201,4 +202,32 @@ def write_document(s: Session, p: Position, kind: str, llm, advert: str) -> Writ
     if reference:
         notes.insert(0, "این دانشگاه نوشتن statement و proposal با AI رو ممنوع کرده. این فقط reference draft هست "
                         "و ضمیمه نمیشه. باید متن خودت رو بنویسی.")
-    return Written(pdf_path, docx_path, reference, notes, issues)
+    return Written(pdf_path, docx_path, reference, notes, issues, doc)
+
+
+REVISE = ("Revise this document following Farbod's instruction (it may be in Persian). Keep everything he did not "
+          "ask to change. " + COMMON)
+
+
+def revise_document(s: Session, p: Position, kind: str, llm, doc: DocText, instruction: str) -> Written:
+    """A new version of a statement or proposal after Farbod's edit instruction from Telegram."""
+    reference = ai_writing_banned(p)
+    s.commit()
+    new = llm.complete("edit_document", f"Instruction from Farbod:\n{instruction}\n\nDocument (JSON):\n"
+                       + doc.model_dump_json(), context=build_context("edit_document"), instructions=REVISE,
+                       output=DocText)
+    new.title = fix_dash_connectors(new.title)
+    for sec in new.sections:
+        sec.heading = fix_dash_connectors(sec.heading)
+        sec.paragraphs = [fix_dash_connectors(x) for x in sec.paragraphs]
+    text = "\n".join(x for sec in new.sections for x in sec.paragraphs)
+    issues = [f"{i.kind}: {i.message} [{i.snippet}]" for i in check_outgoing_text(text)]
+    version = (s.scalar(select(func.max(Document.version)).where(Document.position_id == p.id,
+                                                                 Document.kind == kind)) or 0) + 1
+    _, stem, _ = KINDS[kind]
+    suffix = "_REFERENCE_DRAFT" if reference else ""
+    docx_path, pdf_path = write_files(new, folder_for(p) / f"Farbod_Fooladi_{stem}{suffix}_v{version}", reference)
+    for path in (docx_path, pdf_path):
+        _record(s, p, path, kind, version, final=not reference)
+    p.add_status(f"{kind} v{version} revised after Farbod's instruction ({pdf_path.name}).")
+    return Written(pdf_path, docx_path, reference, list(new.notes_fa), issues, new)

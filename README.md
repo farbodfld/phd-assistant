@@ -233,3 +233,37 @@ docker compose logs -f app
 Run only one copy of `phd serve` (or `phd bot`) at a time: two bots with the same token
 would fight over updates. After moving to the server, stop running them on your computer.
 
+
+## Phase 8: portal packs
+
+The agent never logs in, pays, submits or fills portals, and makes no model calls for portals. For each
+portal application it builds a pack of facts in the position folder: `portal_pack.json` (for the Portal
+session) and `Farbod_Fooladi_Portal_Pack.md` (to read): deadline and days left, score and fit, funding,
+advert link, programme cap status (`knowledge/programmes.yaml`), institution rules (AI writing, portal
+notes, English, application limits), contact history, files ready (CV, transcripts, certificates,
+files already in the folder), referees, and what is left for you. No private data goes in the pack.
+
+Documents (statement, proposal, training needs) are written in a separate Claude "Portal" session of
+the Find PHD project, on the university's own template, and that session fills the portal in Chrome
+up to Submit (skill `portal-apply`). Model calls on the API are kept for emails and the documents
+attached to emails.
+
+- Morning run: packs are built by themselves for positions where the supervisor invited a portal
+  application, or the deadline is within `PORTAL_AUTO_DAYS` (10) and the score at least
+  `PORTAL_AUTO_MIN_SCORE` (70); at most `PORTAL_DAILY_PACKS` (10) a day. Deadline nudges at 7, 3, 1
+  and 0 days for packs not submitted.
+- Google Drive (`DRIVE_PACKS=true`, then `phd gmail-auth` once to add the `drive.file` scope): each
+  pack is also uploaded to `My Drive/PhD Portal Packs/<id> - <title> (<university>)/`, so the Portal
+  session can read it while the agent runs on a server. A failed upload keeps the local pack.
+- Telegram (/portals): a card per pack with the cap, rules, last contact and the line to type in the
+  Portal session (`پورتال #id`); 📎 sends the pack, ⏭ skips. After Submit: `/done <id> <reference>`
+  (closes the rest of a programme once its cap is reached) or `/skip <id>`.
+- The chat assistant can list portals, build a pack, record a submission or skip one.
+
+```
+phd portals                 # packs ready and positions without a pack
+phd portal-pack 296         # build one pack now
+phd portal-done 296 --reference ABC123
+phd portal-skip 296
+phd portal-run --limit 2    # the morning portal step now
+```

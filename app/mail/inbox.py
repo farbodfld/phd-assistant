@@ -146,6 +146,8 @@ def apply_analysis(s: Session, row: EmailMessage, e: ParsedEmail, p: Position | 
             p.add_status(f"{a.category} reply from {e.sender_name}: {a.status_note}", today)
         if a.new_apply_method:
             p.apply_method = a.new_apply_method
+            if "Portal" in a.new_apply_method:      # phase 8: a pack is prepared in the next morning run
+                s.merge(Meta(key=f"portal-invited:{p.id}", value=today.isoformat()))
         if a.category == "rejection":
             for app_ in s.scalars(select(Application).where(Application.position_id == p.id)):
                 app_.outcome = "rejected"

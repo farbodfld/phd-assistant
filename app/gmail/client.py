@@ -12,6 +12,12 @@ from pathlib import Path
 from app.config import get_settings
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]   # read, labels, drafts, send
+DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"  # only files the agent creates (portal packs)
+
+
+def scopes() -> list[str]:
+    """Gmail always; Drive (own files only) when portal packs go to Google Drive."""
+    return SCOPES + ([DRIVE_SCOPE] if get_settings().drive_packs else [])
 
 
 class GmailAuthError(RuntimeError):
@@ -29,7 +35,7 @@ def authorize() -> str:
     client, token = _paths()
     if not client.exists():
         raise GmailAuthError(f"OAuth client file missing: {client}")
-    flow = InstalledAppFlow.from_client_secrets_file(str(client), SCOPES)
+    flow = InstalledAppFlow.from_client_secrets_file(str(client), scopes())
     creds = flow.run_local_server(port=0, open_browser=True)
     token.parent.mkdir(parents=True, exist_ok=True)
     token.write_text(creds.to_json())
@@ -43,7 +49,7 @@ def build_service():
     _, token = _paths()
     if not token.exists():
         raise GmailAuthError("Gmail is not authorised yet: run `phd gmail-auth`")
-    creds = Credentials.from_authorized_user_file(str(token), SCOPES)
+    creds = Credentials.from_authorized_user_file(str(token))   # scopes as granted
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
         token.write_text(creds.to_json())

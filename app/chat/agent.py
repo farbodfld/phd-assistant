@@ -1,8 +1,8 @@
 """The Telegram assistant: Opus with tools over the project's own data.
 
 It answers questions about positions, emails, drafts and tasks, and can do safe things for Farbod
-(draft a first email, edit a draft, write a statement or proposal, record a supervisor's address,
-close a position, tick a task). It never sends an email: a draft is shown with its Approve button.
+(draft a first email, edit a draft, write a statement or proposal for an email, prepare a portal pack, record a supervisor's
+address, close a position, tick a task). It never sends an email: a draft is shown with its Approve button.
 """
 import json
 from datetime import date, datetime, timedelta
@@ -70,6 +70,15 @@ TOOLS = [
     _tool("add_note", "Add a dated note to a position's status.", {"position_id": INT, "note": STR},
           ["position_id", "note"]),
     _tool("mark_task_done", "Tick off one of his tasks.", {"task_id": INT}, ["task_id"]),
+    _tool("list_portals", "Portal applications: packs ready (not yet submitted) and positions still without a pack."),
+    _tool("prepare_portal_pack", "Build the portal pack for a position: the facts his Portal session needs (deadline, "
+          "programme cap, rules, contact history, files ready, referees). No model calls; documents are written in "
+          "the Portal session, not here. The pack card is shown to him afterwards.",
+          {"position_id": INT}, ["position_id"]),
+    _tool("mark_portal_submitted", "Record that he submitted the portal application himself (only when he says so).",
+          {"position_id": INT, "reference": STR}, ["position_id"]),
+    _tool("skip_portal", "He does not want to apply to this portal: no pack and no deadline nudges.",
+          {"position_id": INT}, ["position_id"]),
 ]
 
 
@@ -95,6 +104,7 @@ class Agent:
     def __init__(self, llm, ui, today: date):
         self.llm, self.ui, self.today = llm, ui, today
         self.shown: list[int] = []
+        self.packs: list[int] = []
 
     # ----------------------------------------------------------------- tools
     def run_tool(self, s, name: str, a: dict):
@@ -236,6 +246,29 @@ class Agent:
             t.done = True
             s.commit()
             return {"ok": True}
+        if name == "list_portals":
+            from app.portal.queue import candidates, packed
+            return {"packs_ready": [_pos_line(p) for p in packed(s, self.today)],
+                    "without_pack": [_pos_line(p) for p in candidates(s, self.today)[:25]]}
+        if name in ("prepare_portal_pack", "mark_portal_submitted", "skip_portal"):
+            p = s.get(Position, a["position_id"])
+            if not p:
+                return {"error": "no such position"}
+            if name == "prepare_portal_pack":
+                from app.portal.run import prepare
+                pack = prepare(s, p, self.today)
+                s.commit()
+                self.packs.append(p.id)
+                return {"ok": True, "pack": pack.path.name, "issues": pack.issues,
+                        "note": f"shown to him after your answer; he starts it in the Portal session with 'پورتال #{p.id}'"}
+            from app.portal.queue import mark_submitted, skip
+            closed = []
+            if name == "mark_portal_submitted":
+                closed = mark_submitted(s, p, self.today, a.get("reference"))
+            else:
+                skip(s, p, self.today)
+            s.commit()
+            return {"ok": True, **({"closed_by_programme_cap": closed} if closed else {})}
         return {"error": f"unknown tool {name}"}
 
     # ----------------------------------------------------------------- conversation

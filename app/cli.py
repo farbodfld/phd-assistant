@@ -52,6 +52,16 @@ def main(argv=None):
     ot = sub.add_parser("outreach", help="draft due reminders and first emails now (Gmail drafts until phase 6)")
     ot.add_argument("--limit", type=int, help="at most this many first emails in this run")
     ot.add_argument("--today", type=date.fromisoformat, default=None)
+    sub.add_parser("portals", help="portal applications: packs ready and positions still without a pack")
+    pp = sub.add_parser("portal-pack", help="build the portal pack (facts for the Portal session) for one position now")
+    pp.add_argument("position_id", type=int)
+    pd = sub.add_parser("portal-done", help="record that you submitted a portal application yourself")
+    pd.add_argument("position_id", type=int)
+    pd.add_argument("--reference", default=None)
+    pk = sub.add_parser("portal-skip", help="you will not apply to this portal: no pack and no nudges")
+    pk.add_argument("position_id", type=int)
+    pr = sub.add_parser("portal-run", help="the morning portal step now: packs for invited and urgent positions")
+    pr.add_argument("--limit", type=int)
     di = sub.add_parser("draft-initial", help="draft the first email for one position now")
     di.add_argument("position_id", type=int)
     for name, kind in (("write-statement", "statement"), ("write-proposal", "proposal")):
@@ -244,6 +254,50 @@ def main(argv=None):
                         print("-", line)
         finally:
             fetcher.close()
+    elif args.cmd == "portals":
+        from app.portal.queue import candidates, packed, state
+        with session_scope() as s:
+            today = date.today()
+            ready = packed(s, today)
+            print(f"packs ready, not submitted: {len(ready)}")
+            for p in ready:
+                print(f"  #{p.id} | {p.deadline_text} | {p.title[:70]} | {state(s, p.id).get('pack')}")
+            picks = candidates(s, today)
+            print(f"without a pack (deadline within the horizon, by date): {len(picks)}")
+            for p in picks[:40]:
+                print(f"  #{p.id} | {p.deadline_date or 'rolling'} | score {p.score} | {p.title[:70]} ({p.university})")
+    elif args.cmd == "portal-pack":
+        from app.db.models import Position
+        from app.portal.run import prepare
+        with session_scope() as s:
+            p = s.get(Position, args.position_id)
+            if p is None:
+                raise SystemExit(f"no position #{args.position_id}")
+            pack = prepare(s, p, date.today())
+            print(pack.path)
+            print(pack.json_path)
+            if pack.drive_folder:
+                print("  on Google Drive, folder id", pack.drive_folder)
+            for line in pack.issues:
+                print("-", line)
+    elif args.cmd in ("portal-done", "portal-skip"):
+        from app.db.models import Position
+        from app.portal.queue import mark_submitted, skip
+        with session_scope() as s:
+            p = s.get(Position, args.position_id)
+            if p is None:
+                raise SystemExit(f"no position #{args.position_id}")
+            if args.cmd == "portal-skip":
+                skip(s, p, date.today())
+                print(f"#{p.id} skipped")
+            else:
+                closed = mark_submitted(s, p, date.today(), args.reference)
+                print(f"#{p.id} recorded as submitted")
+                if closed:
+                    print("programme cap reached; closed:", ", ".join(f"#{i}" for i in closed))
+    elif args.cmd == "portal-run":
+        from app.discovery.worker import portals
+        print(portals(limit=args.limit).summary())
     elif args.cmd == "drafts":
         from sqlalchemy import select
         from app.db.models import Draft

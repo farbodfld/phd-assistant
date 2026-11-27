@@ -65,6 +65,23 @@ class TelegramAPI:
                              reply_markup=buttons(rows) if last else None)["message_id"]
         return mid
 
+    def send_document(self, chat_id: int, path, caption: str = "") -> int:
+        """A file from disk (statement, proposal, portal pack). -> message_id"""
+        from pathlib import Path
+        path = Path(path)
+        for attempt in range(3):
+            with path.open("rb") as fh:
+                r = self._http.post(self._base + "sendDocument", data={"chat_id": chat_id, "caption": caption[:1000]},
+                                    files={"document": (path.name, fh)})
+            data = r.json()
+            if data.get("ok"):
+                return data["result"]["message_id"]
+            retry = (data.get("parameters") or {}).get("retry_after")
+            if r.status_code == 429 and retry and attempt < 2:
+                self._sleep(int(retry) + 1)
+                continue
+            raise TelegramError(f"sendDocument: {data.get('description', r.status_code)}")
+
     def set_commands(self, commands: list[tuple[str, str]]):
         """The bot's Menu button: every command with a short description, ready to tap."""
         self._call("setMyCommands", commands=[{"command": c, "description": d} for c, d in commands])

@@ -92,7 +92,7 @@ def daily_discovery():
         logging.exception("outreach failed")
 
 
-def outreach(today: date | None = None, limit: int | None = None):
+def outreach(today: date | None = None, limit: int | None = None, review: bool = True):
     """Phase 5 daily step: reminders and first emails as drafts (and Gmail drafts until phase 6)."""
     settings = get_settings()
     today = today or datetime.now(ZoneInfo(settings.timezone)).date()
@@ -121,7 +121,29 @@ def outreach(today: date | None = None, limit: int | None = None):
         run.ok, run.finished_at = not report.errors, datetime.now(timezone.utc)
         run.report = asdict(report)
     logging.info("%s", report.summary())
-    _say("review", "")                       # the bot now offers the drafts, category by category
+    if review:
+        _say("review", "")                   # the bot now offers the drafts, category by category
+    return report
+
+
+def portals(today: date | None = None, limit: int | None = None):
+    """Daily portal step: packs (facts only, no model calls) for invited and urgent portal positions,
+    uploaded to Google Drive when DRIVE_PACKS is on, and deadline nudges."""
+    from app.portal.run import run_portals
+    settings = get_settings()
+    today = today or datetime.now(ZoneInfo(settings.timezone)).date()
+    with session_scope() as s:
+        run = Run(kind="portals")
+        s.add(run)
+        s.commit()
+        run_id = run.id
+    with session_scope() as s:
+        report = run_portals(s, today, limit=limit)
+    with session_scope() as s:
+        run = s.get(Run, run_id)
+        run.ok, run.finished_at = not report.errors, datetime.now(timezone.utc)
+        run.report = asdict(report)
+    logging.info("%s", report.summary())
     return report
 
 
@@ -233,11 +255,18 @@ def morning():
     _say("stage", "✅ جستجوی دو سایت تموم شد")
     _say("stage", "✉️ شروع آماده کردن ایمیل‌ها (جواب‌ها، ایمیل‌های جدید، یادآوری‌ها)")
     try:
-        outreach()                       # ends with the review invitation
+        outreach(review=False)
     except Exception as exc:
         logging.exception("outreach failed")
         _say("stage", f"⚠️ آماده کردن ایمیل‌ها انجام نشد: {type(exc).__name__}")
-        _say("review", "")
+    _say("stage", "🗂 شروع آماده کردن پک پورتال‌ها")
+    try:
+        rep = portals()
+        _say("stage", f"✅ پک پورتال‌ها: {len(rep.packed)} پک جدید، {rep.waiting} پورتال دیگه برای انتخاب تو")
+    except Exception as exc:
+        logging.exception("portals failed")
+        _say("stage", f"⚠️ آماده کردن پک پورتال‌ها انجام نشد: {type(exc).__name__}")
+    _say("review", "")                   # the review: replies, new emails, reminders, portals
     with session_scope() as s:
         s.merge(Meta(key="pipeline:morning", value=today.isoformat()))
 

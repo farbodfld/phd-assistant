@@ -65,13 +65,15 @@ def test_morning_runs_each_step_in_order_and_announces_it(db, monkeypatch):
     steps = []
     monkeypatch.setattr(worker, "inbox_check", lambda: steps.append("inbox"))
     monkeypatch.setattr(worker, "discover", lambda scheduled, source: steps.append(source))
-    monkeypatch.setattr(worker, "outreach", lambda: (steps.append("outreach"), worker._say("review", "")))
+    monkeypatch.setattr(worker, "outreach", lambda review=True: steps.append("outreach"))
+    from app.portal.run import PortalReport
+    monkeypatch.setattr(worker, "portals", lambda: (steps.append("portals"), PortalReport(packed=[1], waiting=4))[1])
     worker.morning()
-    assert steps == ["inbox", "jobsac", "findaphd", "outreach"]
+    assert steps == ["inbox", "jobsac", "findaphd", "outreach", "portals"]
     with session_scope() as s:
         kinds = [(n.kind, n.text[:2]) for n in s.scalars(select(Notification).order_by(Notification.id))]
     texts = [k for k, _ in kinds]
-    assert texts == ["stage", "report", "stage", "stage", "stage", "stage", "review"]
+    assert texts == ["stage", "report", "stage", "stage", "stage", "stage", "stage", "stage", "review"]
     with session_scope() as s:
         msgs = [n.text for n in s.scalars(select(Notification).order_by(Notification.id))]
     assert "شروع بررسی inbox" in msgs[0] and "پیام جدیدی" in msgs[1] and "تموم شد" in msgs[2]

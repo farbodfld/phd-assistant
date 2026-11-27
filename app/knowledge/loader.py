@@ -25,12 +25,14 @@ TASK_SOPS: dict[str, list[str]] = {
     "score_position": ["50_scoring", "40_funding_and_eligibility"],
     "risk_check": ["40_funding_and_eligibility", "70_approvals_and_notifications"],
     "portal_step": ["35_portals"],
+    "portal_plan": ["35_portals", "30_documents"],
+    "edit_document": ["30_documents"],
     "daily_report": ["70_approvals_and_notifications", "60_tracker"],
     "chat": ["70_approvals_and_notifications", "60_tracker"],
     "chat_simple": ["60_tracker"],
 }
 NEEDS_PROFILE = {"analyse_email", "initial_email", "edit_email", "reminder_email", "reply_to_supervisor", "personal_statement",
-                 "research_proposal", "score_position", "portal_step", "chat"}
+                 "research_proposal", "score_position", "portal_step", "chat", "edit_document"}
 
 
 @lru_cache
